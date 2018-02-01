@@ -12,6 +12,23 @@
 		<compiler>1.8</compiler>
 	</properties>
 
+	<licenses>
+		<license>
+			<name>Apache License, V2.0</name>
+			<url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+			<distribution>repo</distribution>
+			<comments>A business-friendly OSS license</comments>
+		</license>
+	</licenses>
+
+	<distributionManagement>
+		<repository>
+			<id>artifactory.openntf.org</id>
+			<name>artifactory.openntf.org</name>
+			<url>https://artifactory.openntf.org/openntf</url>
+		</repository>
+	</distributionManagement>
+
 	<dependencies>
 		<dependency>
 		    <groupId>com.ibm.sbt</groupId>
