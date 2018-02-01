@@ -1,0 +1,44 @@
+# Eclipse
+bin/
+.settings/
+.project
+.classpath
+.factorypath
+/apt_generated/
+
+# IntelliJ
+.idea
+*.iml
+
+# Mac
+.DS_Store
+*.xcuserstate
+
+# Windows
+Thumbs.db
+
+# Android
+gen/
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+hs_err_pid*
+derby.log
+
+# Maven-generated MANIFESTs
+MANIFEST.MF
+
+# vi
+*.swp
+
+# In-place backup files used by the version-change script
+*.versionChangeBackup
