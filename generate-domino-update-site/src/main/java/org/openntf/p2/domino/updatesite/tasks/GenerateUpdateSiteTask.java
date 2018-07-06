@@ -36,7 +36,7 @@ import com.ibm.commons.xml.XMLException;
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
 	private static final ThreadLocal<DateFormat> TIMESTAMP_FORMAT = ThreadLocal
-			.withInitial(() -> new SimpleDateFormat("yyyyMMdd"));
+			.withInitial(() -> new SimpleDateFormat("yyyyMMdd")); //$NON-NLS-1$
 
 	private final String dominoDir;
 	private final String destDir;
@@ -53,59 +53,79 @@ public class GenerateUpdateSiteTask implements Runnable {
 	public void run() {
 		File domino = checkDirectory(new File(dominoDir));
 
-		File source = checkDirectory(new File(domino, "osgi" + File.separator + "shared" + File.separator + "eclipse"));
-		File sourceFeatures = checkDirectory(new File(source, "features"));
-		File sourcePlugins = checkDirectory(new File(source, "plugins"));
-		File rcp = checkDirectory(new File(domino, "osgi" + File.separator + "rcp" + File.separator + "eclipse"));
-		File rcpFeatures = checkDirectory(new File(rcp, "features"));
-		File rcpPlugins = checkDirectory(new File(rcp, "plugins"));
+		File source = checkDirectory(new File(domino, "osgi" + File.separator + "shared" + File.separator + "eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		File sourceFeatures = checkDirectory(new File(source, "features")); //$NON-NLS-1$
+		File sourcePlugins = checkDirectory(new File(source, "plugins")); //$NON-NLS-1$
+		File rcp = checkDirectory(new File(domino, "osgi" + File.separator + "rcp" + File.separator + "eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		File rcpFeatures = checkDirectory(new File(rcp, "features")); //$NON-NLS-1$
+		File rcpPlugins = checkDirectory(new File(rcp, "plugins")); //$NON-NLS-1$
+		
+		File frameworkEclipse = new File(domino, "framework" + File.separator + "rcp" + File.separator + "eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		File frameworkFeatures = new File(frameworkEclipse, "features"); //$NON-NLS-1$
+		File frameworkPlugins = new File(frameworkEclipse, "plugins"); //$NON-NLS-1$
+
+		File frameworkShared = new File(domino, "framework" + File.separator + "shared" + File.separator + "eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		File frameworkSharedFeatures = new File(frameworkShared, "features"); //$NON-NLS-1$
+		File frameworkSharedPlugins = new File(frameworkShared, "plugins"); //$NON-NLS-1$
 
 		File notesJar = checkFile(new File(domino,
-				"jvm" + File.separator + "lib" + File.separator + "ext" + File.separator + "Notes.jar"));
+				"jvm" + File.separator + "lib" + File.separator + "ext" + File.separator + "Notes.jar")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 
 		File dest = mkDir(new File(destDir));
-		File destFeatures = mkDir(new File(dest, "features"));
-		File destPlugins = mkDir(new File(dest, "plugins"));
+		File destFeatures = mkDir(new File(dest, "features")); //$NON-NLS-1$
+		File destPlugins = mkDir(new File(dest, "plugins")); //$NON-NLS-1$
 
 		File eclipse = checkDirectory(new File(eclipseDir));
-		File eclipsePlugins = checkDirectory(new File(eclipse, "plugins"));
+		File eclipsePlugins = checkDirectory(new File(eclipse, "plugins")); //$NON-NLS-1$
 		File eclipseLauncher = eclipsePlugins
-				.listFiles(file -> file.getName().startsWith("org.eclipse.equinox.launcher_"))[0];
+				.listFiles(file -> file.getName().startsWith("org.eclipse.equinox.launcher_"))[0]; //$NON-NLS-1$
 
 		try {
 			copyArtifacts(rcpFeatures, destFeatures);
 			copyArtifacts(sourceFeatures, destFeatures);
+			if(frameworkFeatures.exists() && frameworkFeatures.isDirectory()) {
+				copyArtifacts(frameworkFeatures, destFeatures);
+			}
+			if(frameworkSharedFeatures.exists() && frameworkSharedFeatures.isDirectory()) {
+				copyArtifacts(frameworkSharedFeatures, destFeatures);
+			}
 			copyArtifacts(rcpPlugins, destPlugins);
 			copyArtifacts(sourcePlugins, destPlugins);
+			if(frameworkPlugins.exists() && frameworkPlugins.isDirectory()) {
+				copyArtifacts(frameworkPlugins, destPlugins);
+			}
+			if(frameworkSharedPlugins.exists() && frameworkSharedPlugins.isDirectory()) {
+				copyArtifacts(frameworkSharedPlugins, destPlugins);
+			}
 
 			{
 
 				String timestamp = TIMESTAMP_FORMAT.get().format(new Date());
-				String version = "9.0.1." + timestamp + "-1500";
+				String version = "9.0.1." + timestamp + "-1500"; //$NON-NLS-1$ //$NON-NLS-2$
 				// Create the Notes API 9.0.1 plugin, since stock still lists 8.5.3
 				{
-					String bundleId = "com.ibm.notes.java.api";
-					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar");
+					String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
+					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (FileOutputStream fos = new FileOutputStream(plugin)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
-							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
+							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
 							Manifest manifest = new Manifest();
 							Attributes attrs = manifest.getMainAttributes();
-							attrs.putValue("Manifest-Version", "1.0");
-							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true");
-							attrs.putValue("Bundle-Vendor", "IBM");
-							attrs.putValue("Bundle-Name", "Notes Java API");
-							attrs.putValue("Bundle-Version", version);
-							attrs.putValue("Bundle-ManifestVersion", "2");
-							attrs.putValue("Eclipse-ExtensibleAPI", "true");
+							attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Name", "Notes Java API"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
+							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
 
 							// Find the packages to export from the Notes.jar
 							try (JarFile notesJarFile = new JarFile(notesJar)) {
 								String exports = notesJarFile.stream()
 										.map(jarEntry -> new File(jarEntry.getName()).getParent().replace('/', '.'))
 										.distinct().filter(name -> Objects.nonNull(name))
-										.collect(Collectors.joining(","));
-								attrs.putValue("Export-Package", exports);
+										.collect(Collectors.joining(",")); //$NON-NLS-1$
+								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
 
 							manifest.write(jos);
@@ -116,25 +136,25 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 				// Create the faux Notes.jar fragment
 				{
-					String bundleId = "com.ibm.notes.java.api.win32.linux";
-					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar");
+					String bundleId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
+					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (FileOutputStream fos = new FileOutputStream(plugin)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
-							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
+							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
 							Manifest manifest = new Manifest();
 							Attributes attrs = manifest.getMainAttributes();
-							attrs.putValue("Manifest-Version", "1.0");
-							attrs.putValue("Bundle-ClassPath", "Notes.jar");
-							attrs.putValue("Bundle-Vendor", "IBM");
-							attrs.putValue("Fragment-Host", "com.ibm.notes.java.api");
-							attrs.putValue("Bundle-Name", "Notes Java API Windows and Linux Fragment");
-							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true");
-							attrs.putValue("Bundle-Version", version);
-							attrs.putValue("Bundle-ManifestVersion", "2");
+							attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-ClassPath", "Notes.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Fragment-Host", "com.ibm.notes.java.api"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Name", "Notes Java API Windows and Linux Fragment"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
+							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
 							manifest.write(jos);
 							jos.closeEntry();
 
-							jos.putNextEntry(new ZipEntry("Notes.jar"));
+							jos.putNextEntry(new ZipEntry("Notes.jar")); //$NON-NLS-1$
 							try (FileInputStream notesJarIs = new FileInputStream(notesJar)) {
 								StreamUtil.copyStream(notesJarIs, jos);
 							}
@@ -148,11 +168,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 			buildSiteXml(dest);
 
 			// Have Eclipse build p2 metadata
-			File java = new File(System.getProperty("java.home"), "bin" + File.separator + "java");
+			File java = new File(System.getProperty("java.home"), "bin" + File.separator + "java"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			String destUri = Paths.get(dest.getAbsolutePath()).toUri().toString();
-			new ProcessBuilder(java.getAbsolutePath(), "-jar", eclipseLauncher.getAbsolutePath(), "-application",
-					"org.eclipse.equinox.p2.publisher.EclipseGenerator", "-base", dest.getAbsolutePath(), "-source",
-					dest.getAbsolutePath(), "-metadataRepository", destUri, "-artifactRepository", destUri, "-compress")
+			new ProcessBuilder(java.getAbsolutePath(), "-jar", eclipseLauncher.getAbsolutePath(), "-application", //$NON-NLS-1$ //$NON-NLS-2$
+					"org.eclipse.equinox.p2.publisher.EclipseGenerator", "-base", dest.getAbsolutePath(), "-source", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					dest.getAbsolutePath(), "-metadataRepository", destUri, "-artifactRepository", destUri, "-compress") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 							.inheritIO().start().waitFor();
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -203,7 +223,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 	}
 
 	private void copyOrPack(File source, File destDir) throws Exception {
-		if (source.isFile() && source.getName().endsWith(".jar")) {
+		if (source.isFile() && source.getName().endsWith(".jar")) { //$NON-NLS-1$
 			try (FileInputStream fis = new FileInputStream(source)) {
 				try (FileOutputStream fos = new FileOutputStream(new File(destDir, source.getName()))) {
 					StreamUtil.copyStream(fis, fos);
@@ -211,7 +231,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			}
 		} else if (source.isDirectory()) {
 			// Must be an unpacked plugin
-			File destPlugin = new File(destDir, source.getName() + ".jar");
+			File destPlugin = new File(destDir, source.getName() + ".jar"); //$NON-NLS-1$
 			zipFolder(Paths.get(source.getAbsolutePath()), Paths.get(destPlugin.getAbsolutePath()));
 		}
 	}
@@ -222,7 +242,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 				String relativePath = sourceFolderPath.relativize(file).toString();
 				// Strip signature files, since they'll no longer quite match
-				if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) {
+				if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) { //$NON-NLS-1$ //$NON-NLS-2$
 					zos.putNextEntry(new ZipEntry(relativePath));
 					java.nio.file.Files.copy(file, zos);
 					zos.closeEntry();
@@ -249,7 +269,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Element root = DOMUtil.createElement(doc, "site"); //$NON-NLS-1$
 
 				// Create the category entry if applicable
-				String category = "IBM XPages Runtime";
+				String category = "IBM XPages Runtime"; //$NON-NLS-1$
 				if (StringUtil.isNotEmpty(category)) {
 					Element categoryDef = DOMUtil.createElement(doc, root, "category-def"); //$NON-NLS-1$
 					categoryDef.setAttribute("name", category); //$NON-NLS-1$
