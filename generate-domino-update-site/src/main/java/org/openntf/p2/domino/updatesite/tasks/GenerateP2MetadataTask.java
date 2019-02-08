@@ -13,6 +13,7 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.eclipse.osgi.util.ManifestElement;
 import org.w3c.dom.DOMException;
@@ -37,12 +38,18 @@ public class GenerateP2MetadataTask implements Runnable {
 	public void run() {
 		try {
 			Document artifactsXml = createArtifactsXml();
-			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.xml"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-				DOMUtil.serialize(os, artifactsXml, Format.defaultFormat);
+			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+					zos.putNextEntry(new ZipEntry("artifacts.xml"));
+					DOMUtil.serialize(zos, artifactsXml, Format.defaultFormat);
+				}
 			}
 			Document contentXml = createContentXml();
-			try(OutputStream os = Files.newOutputStream(dest.resolve("content.xml"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-				DOMUtil.serialize(os, contentXml, Format.defaultFormat);
+			try(OutputStream os = Files.newOutputStream(dest.resolve("content.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+					zos.putNextEntry(new ZipEntry("content.xml"));
+					DOMUtil.serialize(zos, contentXml, Format.defaultFormat);	
+				}
 			}
 			
 		} catch (XMLException | IOException e) {
