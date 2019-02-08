@@ -23,20 +23,13 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	 */
 	@Parameter(property="dest", required=true)
 	private File dest;
-	
-	/**
-	 * Eclipse program root
-	 */
-	@Parameter(property="eclipse", required=true)
-	private File eclipse;
 
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
 		String dominoDir = src.getAbsolutePath();
 		String destDir = dest.getAbsolutePath();
-		String eclipseDir = eclipse.getAbsolutePath();
 		
-		new GenerateUpdateSiteTask(dominoDir, destDir, eclipseDir).run();
+		new GenerateUpdateSiteTask(dominoDir, destDir).run();
 	}
 
 }

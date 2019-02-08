@@ -56,13 +56,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private final String dominoDir;
 	private final String destDir;
-	private final String eclipseDir;
 
-	public GenerateUpdateSiteTask(String dominoDir, String destDir, String eclipseDir) {
+	public GenerateUpdateSiteTask(String dominoDir, String destDir) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
-		this.eclipseDir = eclipseDir;
 	}
 
 	@Override
@@ -90,12 +88,6 @@ public class GenerateUpdateSiteTask implements Runnable {
 			Path dest = mkDir(Paths.get(destDir));
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
-
-			Path eclipse = checkDirectory(Paths.get(eclipseDir));
-			Path eclipsePlugins = checkDirectory(eclipse.resolve("plugins")); //$NON-NLS-1$
-			Path eclipseLauncher = Files.list(eclipsePlugins)
-					.filter(path -> path.getFileName().toString().startsWith("org.eclipse.equinox.launcher_")) //$NON-NLS-1$
-					.findFirst().orElseThrow(() -> new IllegalArgumentException("Cannot find Equinox launcher in path " + eclipsePlugins));
 			
 			copyArtifacts(rcpFeatures, destFeatures);
 			copyArtifacts(sourceFeatures, destFeatures);
@@ -182,7 +174,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			buildSiteXml(dest);
 
 			// Have Eclipse build p2 metadata
-			buildP2Metadata(dest, eclipseLauncher);
+			new GenerateP2MetadataTask(dest).run();
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -334,14 +326,5 @@ public class GenerateUpdateSiteTask implements Runnable {
 				throw new RuntimeException("Exception while building site.xml document", e);
 			}
 		}
-	}
-	
-	private void buildP2Metadata(Path dest, Path eclipseLauncher) throws InterruptedException, IOException {
-		Path java = Paths.get(System.getProperty("java.home"), "bin", "java"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		String destUri = dest.toUri().toString();
-		new ProcessBuilder(java.toAbsolutePath().toString(), "-jar", eclipseLauncher.toAbsolutePath().toString(), "-application", //$NON-NLS-1$ //$NON-NLS-2$
-				"org.eclipse.equinox.p2.publisher.EclipseGenerator", "-base", dest.toAbsolutePath().toString(), "-source", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-				dest.toAbsolutePath().toString(), "-metadataRepository", destUri, "-artifactRepository", destUri, "-compress") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-						.inheritIO().start().waitFor();
 	}
 }
