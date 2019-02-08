@@ -2,6 +2,12 @@
 
 This tool allows the generation of a p2 site from a Domino installation folder, similar to the official [IBM Domino Update Site for Build Management](https://openntf.org/main.nsf/project.xsp?r=project/IBM%20Domino%20Update%20Site%20for%20Build%20Management). This is useful to compile code that targets a newer release of Domino than the one packaged officially.
 
+## Requirements
+
+- A Notes or Domino installation filesystem-accessible to the running computer
+- Maven 3+
+- Java 8+
+
 ## What It Does
 
 The tool performs several tasks to generate its result:
@@ -14,12 +20,12 @@ The tool performs several tasks to generate its result:
 
 ## Command Line Use
 
-To use the tool from the command line, either add the OpenNTF Maven repository (https://artifactory.openntf.org/openntf) to your configuration or install the Maven project. Then, execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
+To use the tool from the command line, either add the OpenNTF Maven repository (https://artifactory.openntf.org/openntf) as a plugin repository to your Maven configuration or install the Maven project. Then, execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
 $ cd generate-domino-update-site
 $ mvn install
-$ mvn org.openntf.p2:generate-domino-update-site:1.0.4-SNAPSHOT:generateUpdateSite \
+$ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
 	-Dsrc "/Volumes/C/Program Files/IBM/Domino" \
 	-Ddest /Users/someuser/Desktop/UpdateSite
 ```
