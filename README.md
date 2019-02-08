@@ -7,27 +7,25 @@ This tool allows the generation of a p2 site from a Domino installation folder, 
 The tool performs several tasks to generate its result:
 
 1. Copies the features and plugins from the  `osgi/rcp/eclipe` and `osgi/shared/eclipse`  directories, converting unpacked folder artifacts back into Jar files
-2. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date
-3. Creates a basic site.xml file
-4. Generates artifacts.jar and content.jar files using Eclipse's p2 generator
+2. If pointed to a Notes installation directory, it will do the same with the `framework` directory, which contains UI-specific plugins
+3. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date
+4. Creates a basic site.xml file
+5. Generates artifacts.jar and content.jar files using Eclipse's p2 generator
 
 ## Command Line Use
 
-To use the tool from the command line, either add the OpenNTF Maven repository (https://artifactory.openntf.org/openntf) to your configuration or install the Maven project. Then, execute the plugin with properties to point to the base of your Domino installation, the target folder, and the p2 directory of an active Eclipse installation. For example:
+To use the tool from the command line, either add the OpenNTF Maven repository (https://artifactory.openntf.org/openntf) to your configuration or install the Maven project. Then, execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
 $ cd generate-domino-update-site
 $ mvn install
 $ mvn org.openntf.p2:generate-domino-update-site:1.0.4-SNAPSHOT:generateUpdateSite \
 	-Dsrc "/Volumes/C/Program Files/IBM/Domino" \
-	-Ddest /Users/someuser/Desktop/UpdateSite \
-	-Declipse /Applications/Eclipse.app/Contents/Eclipse
+	-Ddest /Users/someuser/Desktop/UpdateSite
 ```
 - `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino"
 
 - `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite"
-
-- `eclipse` is the folder of Eclipse that then has the subfolder "plugins"
 
 ## Programmatic Use
 
