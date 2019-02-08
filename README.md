@@ -18,11 +18,14 @@ To use the tool from the command line, build the Maven project and run the jar w
 ```sh
 $ cd generate-domino-update-site
 $ mvn package
-$ java -jar target/generate-domino-update-site-1.0.0-jar-with-dependencies.jar \
+$ java -jar target/generate-domino-update-site-1.0.3-jar-with-dependencies.jar \
 	-src "/Volumes/C/Program Files/IBM/Domino" \
 	-dest ~/Desktop/UpdateSite \
 	-eclipse /Applications/Eclipse.app/Contents/Eclipse
 ```
+`src` is the location of Domino. On Windows this might be "C:\Program Files\IBM\Domino"
+`dest` is where you want to save it to. For Extension Library this was historically "C:\UpdateSite"
+`eclipse` is the folder of Eclipse that then has the subfolder "plugins"
 
 ## Programmatic Use
 
