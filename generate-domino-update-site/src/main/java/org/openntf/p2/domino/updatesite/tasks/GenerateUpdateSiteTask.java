@@ -1,20 +1,22 @@
 package org.openntf.p2.domino.updatesite.tasks;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.FilenameFilter;
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -29,7 +31,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import com.ibm.commons.util.StringUtil;
-import com.ibm.commons.util.io.StreamUtil;
 import com.ibm.commons.xml.DOMUtil;
 import com.ibm.commons.xml.XMLException;
 
@@ -51,62 +52,62 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	@Override
 	public void run() {
-		File domino = checkDirectory(new File(dominoDir));
+		Path domino = checkDirectory(Paths.get(dominoDir));
 
-		File source = checkDirectory(new File(domino, "osgi" + File.separator + "shared" + File.separator + "eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		File sourceFeatures = checkDirectory(new File(source, "features")); //$NON-NLS-1$
-		File sourcePlugins = checkDirectory(new File(source, "plugins")); //$NON-NLS-1$
-		File rcp = checkDirectory(new File(domino, "osgi" + File.separator + "rcp" + File.separator + "eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		File rcpFeatures = checkDirectory(new File(rcp, "features")); //$NON-NLS-1$
-		File rcpPlugins = checkDirectory(new File(rcp, "plugins")); //$NON-NLS-1$
+		Path source = checkDirectory(domino.resolve("osgi").resolve("shared").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		Path sourceFeatures = checkDirectory(source.resolve("features")); //$NON-NLS-1$
+		Path sourcePlugins = checkDirectory(source.resolve("plugins")); //$NON-NLS-1$
+		Path rcp = checkDirectory(domino.resolve("osgi").resolve("rcp").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		Path rcpFeatures = checkDirectory(rcp.resolve("features")); //$NON-NLS-1$
+		Path rcpPlugins = checkDirectory(rcp.resolve("plugins")); //$NON-NLS-1$
 		
-		File frameworkEclipse = new File(domino, "framework" + File.separator + "rcp" + File.separator + "eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		File frameworkFeatures = new File(frameworkEclipse, "features"); //$NON-NLS-1$
-		File frameworkPlugins = new File(frameworkEclipse, "plugins"); //$NON-NLS-1$
+		Path frameworkEclipse = domino.resolve("framework").resolve("rcp").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		Path frameworkFeatures = frameworkEclipse.resolve("features"); //$NON-NLS-1$
+		Path frameworkPlugins = frameworkEclipse.resolve("plugins"); //$NON-NLS-1$
 
-		File frameworkShared = new File(domino, "framework" + File.separator + "shared" + File.separator + "eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		File frameworkSharedFeatures = new File(frameworkShared, "features"); //$NON-NLS-1$
-		File frameworkSharedPlugins = new File(frameworkShared, "plugins"); //$NON-NLS-1$
+		Path frameworkShared = domino.resolve("framework").resolve("shared").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		Path frameworkSharedFeatures = frameworkShared.resolve("features"); //$NON-NLS-1$
+		Path frameworkSharedPlugins = frameworkShared.resolve("plugins"); //$NON-NLS-1$
 
-		File notesJar = checkFile(new File(domino,
-				"jvm" + File.separator + "lib" + File.separator + "ext" + File.separator + "Notes.jar")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-
-		File dest = mkDir(new File(destDir));
-		File destFeatures = mkDir(new File(dest, "features")); //$NON-NLS-1$
-		File destPlugins = mkDir(new File(dest, "plugins")); //$NON-NLS-1$
-
-		File eclipse = checkDirectory(new File(eclipseDir));
-		File eclipsePlugins = checkDirectory(new File(eclipse, "plugins")); //$NON-NLS-1$
-		File eclipseLauncher = eclipsePlugins
-				.listFiles(file -> file.getName().startsWith("org.eclipse.equinox.launcher_"))[0]; //$NON-NLS-1$
+		Path notesJar = checkFile(domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 
 		try {
+			Path dest = mkDir(Paths.get(destDir));
+			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
+			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
+
+			Path eclipse = checkDirectory(Paths.get(eclipseDir));
+			Path eclipsePlugins = checkDirectory(eclipse.resolve("plugins")); //$NON-NLS-1$
+			Path eclipseLauncher = Files.list(eclipsePlugins)
+					.filter(path -> path.getFileName().toString().startsWith("org.eclipse.equinox.launcher_")) //$NON-NLS-1$
+					.findFirst().orElseThrow(() -> new IllegalArgumentException("Cannot find Equinox launcher in path " + eclipsePlugins));
+			
 			copyArtifacts(rcpFeatures, destFeatures);
 			copyArtifacts(sourceFeatures, destFeatures);
-			if(frameworkFeatures.exists() && frameworkFeatures.isDirectory()) {
+			if(Files.isDirectory(frameworkFeatures)) {
 				copyArtifacts(frameworkFeatures, destFeatures);
 			}
-			if(frameworkSharedFeatures.exists() && frameworkSharedFeatures.isDirectory()) {
+			if(Files.isDirectory(frameworkSharedFeatures)) {
 				copyArtifacts(frameworkSharedFeatures, destFeatures);
 			}
 			copyArtifacts(rcpPlugins, destPlugins);
 			copyArtifacts(sourcePlugins, destPlugins);
-			if(frameworkPlugins.exists() && frameworkPlugins.isDirectory()) {
+			if(Files.isDirectory(frameworkPlugins)) {
 				copyArtifacts(frameworkPlugins, destPlugins);
 			}
-			if(frameworkSharedPlugins.exists() && frameworkSharedPlugins.isDirectory()) {
+			if(Files.isDirectory(frameworkSharedPlugins)) {
 				copyArtifacts(frameworkSharedPlugins, destPlugins);
 			}
 
 			{
-
+				String baseVersion = readNotesVersion(notesJar);
 				String timestamp = TIMESTAMP_FORMAT.get().format(new Date());
-				String version = "9.0.1." + timestamp + "-1500"; //$NON-NLS-1$ //$NON-NLS-2$
-				// Create the Notes API 9.0.1 plugin, since stock still lists 8.5.3
+				String version = baseVersion + "." + timestamp + "-1500"; //$NON-NLS-1$ //$NON-NLS-2$
+				// Create the Notes API plugin for the true version, since the shipping plugin one is often out of step
 				{
 					String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
-					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-					try (FileOutputStream fos = new FileOutputStream(plugin)) {
+					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
 							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
 							Manifest manifest = new Manifest();
@@ -120,9 +121,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 							attrs.putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
 
 							// Find the packages to export from the Notes.jar
-							try (JarFile notesJarFile = new JarFile(notesJar)) {
+							try (JarFile notesJarFile = new JarFile(notesJar.toFile())) {
 								String exports = notesJarFile.stream()
-										.map(jarEntry -> new File(jarEntry.getName()).getParent().replace('/', '.'))
+										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent().toString().replace('/', '.'))
 										.distinct().filter(name -> Objects.nonNull(name))
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
@@ -137,8 +138,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 				// Create the faux Notes.jar fragment
 				{
 					String bundleId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
-					File plugin = new File(destPlugins, bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-					try (FileOutputStream fos = new FileOutputStream(plugin)) {
+					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
 							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
 							Manifest manifest = new Manifest();
@@ -155,9 +156,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 							jos.closeEntry();
 
 							jos.putNextEntry(new ZipEntry("Notes.jar")); //$NON-NLS-1$
-							try (FileInputStream notesJarIs = new FileInputStream(notesJar)) {
-								StreamUtil.copyStream(notesJarIs, jos);
-							}
+							Files.copy(notesJar, jos);
 							jos.closeEntry();
 						}
 					}
@@ -168,12 +167,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			buildSiteXml(dest);
 
 			// Have Eclipse build p2 metadata
-			File java = new File(System.getProperty("java.home"), "bin" + File.separator + "java"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-			String destUri = Paths.get(dest.getAbsolutePath()).toUri().toString();
-			new ProcessBuilder(java.getAbsolutePath(), "-jar", eclipseLauncher.getAbsolutePath(), "-application", //$NON-NLS-1$ //$NON-NLS-2$
-					"org.eclipse.equinox.p2.publisher.EclipseGenerator", "-base", dest.getAbsolutePath(), "-source", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-					dest.getAbsolutePath(), "-metadataRepository", destUri, "-artifactRepository", destUri, "-compress") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-							.inheritIO().start().waitFor();
+			buildP2Metadata(dest, eclipseLauncher);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -183,33 +177,31 @@ public class GenerateUpdateSiteTask implements Runnable {
 	// *******************************************************************************
 	// * Internal utility methods
 	// *******************************************************************************
-	private File checkDirectory(File dir) {
-		if (!dir.exists() || !dir.isDirectory()) {
-			throw new RuntimeException("Directory does not exist: " + dir.getAbsolutePath());
+	private Path checkDirectory(Path dir) {
+		if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+			throw new RuntimeException("Directory does not exist: " + dir.toAbsolutePath());
 		}
 		return dir;
 	}
 
-	private File checkFile(File file) {
-		if (!file.exists() || !file.isFile()) {
-			throw new RuntimeException("File does not exist: " + file.getAbsolutePath());
+	private Path checkFile(Path file) {
+		if (!Files.exists(file) || !Files.isRegularFile(file)) {
+			throw new RuntimeException("File does not exist: " + file.toAbsolutePath());
 		}
 		return file;
 	}
 
-	private File mkDir(File dir) {
-		if (dir.isFile()) {
-			throw new RuntimeException("Planned directory exists as a file: " + dir.getAbsolutePath());
+	private Path mkDir(Path dir) throws IOException {
+		if (Files.isRegularFile(dir)) {
+			throw new RuntimeException("Planned directory exists as a file: " + dir.toAbsolutePath());
 		}
-		if (!dir.exists()) {
-			dir.mkdirs();
-		}
+		Files.createDirectories(dir);
 		return dir;
 	}
 
-	private void copyArtifacts(File sourceDir, File destDir) throws Exception {
-		for (File artifact : sourceDir.listFiles()) {
-			System.out.println("Copying " + artifact.getName());
+	private void copyArtifacts(Path sourceDir, Path destDir) throws Exception {
+		Files.list(sourceDir).forEach(artifact -> {
+			System.out.println("Copying " + artifact.getFileName().toString());
 			try {
 				copyOrPack(artifact, destDir);
 
@@ -219,49 +211,64 @@ public class GenerateUpdateSiteTask implements Runnable {
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
-		}
+		});
 	}
 
-	private void copyOrPack(File source, File destDir) throws Exception {
-		if (source.isFile() && source.getName().endsWith(".jar")) { //$NON-NLS-1$
-			try (FileInputStream fis = new FileInputStream(source)) {
-				try (FileOutputStream fos = new FileOutputStream(new File(destDir, source.getName()))) {
-					StreamUtil.copyStream(fis, fos);
-				}
-			}
-		} else if (source.isDirectory()) {
+	private void copyOrPack(Path source, Path destDir) throws Exception {
+		if (Files.isRegularFile(source) && source.getFileName().toString().endsWith(".jar")) { //$NON-NLS-1$
+			Path dest = destDir.resolve(source.getFileName());
+			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+		} else if (Files.isDirectory(source)) {
 			// Must be an unpacked plugin
-			File destPlugin = new File(destDir, source.getName() + ".jar"); //$NON-NLS-1$
-			zipFolder(Paths.get(source.getAbsolutePath()), Paths.get(destPlugin.getAbsolutePath()));
+			Path destPlugin = destDir.resolve(source.getFileName() + ".jar"); //$NON-NLS-1$
+			zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath());
 		}
 	}
 
 	private void zipFolder(Path sourceFolderPath, Path zipPath) throws Exception {
-		ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipPath.toFile()));
-		java.nio.file.Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
-			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-				String relativePath = sourceFolderPath.relativize(file).toString();
-				// Strip signature files, since they'll no longer quite match
-				if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) { //$NON-NLS-1$ //$NON-NLS-2$
-					zos.putNextEntry(new ZipEntry(relativePath));
-					java.nio.file.Files.copy(file, zos);
-					zos.closeEntry();
-				}
-				return FileVisitResult.CONTINUE;
+		try(OutputStream fos = Files.newOutputStream(zipPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			try(ZipOutputStream zos = new ZipOutputStream(fos)) {
+				Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
+					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+						String relativePath = sourceFolderPath.relativize(file).toString();
+						// Strip signature files, since they'll no longer quite match
+						if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) { //$NON-NLS-1$ //$NON-NLS-2$
+							zos.putNextEntry(new ZipEntry(relativePath));
+							Files.copy(file, zos);
+							zos.closeEntry();
+						}
+						return FileVisitResult.CONTINUE;
+					}
+				});
 			}
-		});
-		zos.close();
+		}
+	}
+	
+	private String readNotesVersion(Path notesJar) throws IOException {
+		try(JarFile jarFile = new JarFile(notesJar.toFile())) {
+			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties");
+			try(InputStream is = jarFile.getInputStream(versionProps)) {
+				Properties props = new Properties();
+				props.load(is);
+				String notesVersion = props.getProperty("NotesVersion", "");
+				if(notesVersion.startsWith("Release ")) {
+					return notesVersion.substring("Release ".length());
+				} else {
+					return notesVersion;
+				}
+			}
+		}
 	}
 
-	private void buildSiteXml(File baseDir) {
-		File f = baseDir;
+	private void buildSiteXml(Path baseDir) throws IOException {
+		Path f = baseDir;
 
-		if (!f.exists() || !f.isDirectory()) {
+		if (!Files.isDirectory(f)) {
 			throw new RuntimeException("Repository directory does not exist.");
 		} else {
-			File features = new File(f, "features"); //$NON-NLS-1$
-			if (!features.exists() || !features.isDirectory()) {
-				throw new RuntimeException("Unable to find features directory: " + features.getAbsolutePath());
+			Path features = f.resolve("features"); //$NON-NLS-1$
+			if (!Files.isDirectory(features)) {
+				throw new RuntimeException("Unable to find features directory: " + features.toAbsolutePath());
 			}
 
 			try {
@@ -276,14 +283,10 @@ public class GenerateUpdateSiteTask implements Runnable {
 					categoryDef.setAttribute("label", category); //$NON-NLS-1$
 				}
 
-				String[] featureFiles = features.list(new FilenameFilter() {
-					@Override
-					public boolean accept(File parent, String fileName) {
-						return StringUtil.toString(fileName).toLowerCase().endsWith(".jar"); //$NON-NLS-1$
-					}
-				});
-
-				for (String featureFilename : featureFiles) {
+				Files.list(features)
+					.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar"))
+					.forEach(feature -> {
+					String featureFilename = feature.getFileName().toString();
 					Matcher matcher = FEATURE_FILENAME_PATTERN.matcher(featureFilename);
 					if (!matcher.matches()) {
 						throw new IllegalStateException("Could not match filename pattern to " + featureFilename);
@@ -301,20 +304,29 @@ public class GenerateUpdateSiteTask implements Runnable {
 						Element categoryElement = DOMUtil.createElement(doc, featureElement, "category"); //$NON-NLS-1$
 						categoryElement.setAttribute("name", category); //$NON-NLS-1$
 					}
-				}
+				});
 
 				String xml = DOMUtil.getXMLString(doc, false, true);
-				File output = new File(f, "site.xml"); //$NON-NLS-1$
-				try (FileWriter w = new FileWriter(output)) {
+				Path output = f.resolve("site.xml"); //$NON-NLS-1$
+				try (BufferedWriter w = Files.newBufferedWriter(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 					w.write(xml);
 				} catch (IOException e) {
 					throw new RuntimeException("Error writing site.xml file", e);
 				}
 
-				System.out.println(StringUtil.format("Wrote site.xml contents to {0}", output.getAbsolutePath()));
+				System.out.println(StringUtil.format("Wrote site.xml contents to {0}", output.toAbsolutePath()));
 			} catch (XMLException e) {
 				throw new RuntimeException("Exception while building site.xml document", e);
 			}
 		}
+	}
+	
+	private void buildP2Metadata(Path dest, Path eclipseLauncher) throws InterruptedException, IOException {
+		Path java = Paths.get(System.getProperty("java.home"), "bin", "java"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		String destUri = dest.toUri().toString();
+		new ProcessBuilder(java.toAbsolutePath().toString(), "-jar", eclipseLauncher.toAbsolutePath().toString(), "-application", //$NON-NLS-1$ //$NON-NLS-2$
+				"org.eclipse.equinox.p2.publisher.EclipseGenerator", "-base", dest.toAbsolutePath().toString(), "-source", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				dest.toAbsolutePath().toString(), "-metadataRepository", destUri, "-artifactRepository", destUri, "-compress") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+						.inheritIO().start().waitFor();
 	}
 }
