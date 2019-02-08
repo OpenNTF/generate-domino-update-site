@@ -13,19 +13,21 @@ The tool performs several tasks to generate its result:
 
 ## Command Line Use
 
-To use the tool from the command line, build the Maven project and run the jar with arguments to point to the base of your Domino installation, the target folder, and the p2 directory of an active Eclipse installation. For example:
+To use the tool from the command line, either add the OpenNTF Maven repository (https://artifactory.openntf.org/openntf) to your configuration or install the Maven project. Then, execute the plugin with properties to point to the base of your Domino installation, the target folder, and the p2 directory of an active Eclipse installation. For example:
 
 ```sh
 $ cd generate-domino-update-site
-$ mvn package
-$ java -jar target/generate-domino-update-site-1.0.3-jar-with-dependencies.jar \
-	-src "/Volumes/C/Program Files/IBM/Domino" \
-	-dest ~/Desktop/UpdateSite \
-	-eclipse /Applications/Eclipse.app/Contents/Eclipse
+$ mvn install
+$ mvn org.openntf.p2:generate-domino-update-site:1.0.4-SNAPSHOT:generateUpdateSite \
+	-Dsrc "/Volumes/C/Program Files/IBM/Domino" \
+	-Ddest /Users/someuser/Desktop/UpdateSite \
+	-Declipse /Applications/Eclipse.app/Contents/Eclipse
 ```
-`src` is the location of Domino. On Windows this might be "C:\Program Files\IBM\Domino"
-`dest` is where you want to save it to. For Extension Library this was historically "C:\UpdateSite"
-`eclipse` is the folder of Eclipse that then has the subfolder "plugins"
+- `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino"
+
+- `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite"
+
+- `eclipse` is the folder of Eclipse that then has the subfolder "plugins"
 
 ## Programmatic Use
 
