@@ -16,6 +16,7 @@
 package org.openntf.p2.domino.updatesite.tasks;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -222,7 +223,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 	}
 
 	private void copyOrPack(Path source, Path destDir) throws Exception {
-		if (Files.isRegularFile(source) && source.getFileName().toString().endsWith(".jar")) { //$NON-NLS-1$
+		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
 			Path dest = destDir.resolve(source.getFileName());
 			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
 		} else if (Files.isDirectory(source)) {
@@ -237,7 +238,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			try(ZipOutputStream zos = new ZipOutputStream(fos)) {
 				Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
 					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-						String relativePath = sourceFolderPath.relativize(file).toString();
+						String relativePath = sourceFolderPath.relativize(file).toString().replace(File.separatorChar, '/');
 						// Strip signature files, since they'll no longer quite match
 						if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) { //$NON-NLS-1$ //$NON-NLS-2$
 							zos.putNextEntry(new ZipEntry(relativePath));
