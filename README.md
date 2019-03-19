@@ -26,8 +26,8 @@ To use the tool from the command line, either add the OpenNTF Maven repository (
 $ cd generate-domino-update-site
 $ mvn install
 $ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
-	-Dsrc "/Volumes/C/Program Files/IBM/Domino" \
-	-Ddest /Users/someuser/Desktop/UpdateSite
+	-Dsrc="/Volumes/C/Program Files/IBM/Domino" \
+	-Ddest="/Users/someuser/Desktop/UpdateSite"
 ```
 - `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino"
 
