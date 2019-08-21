@@ -71,6 +71,9 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 	@Parameter(property="src", required=true)
 	private File src;
 	
+	@Parameter(property="groupId", required=false, defaultValue=GROUP_ID)
+	private String groupId;
+	
 	@Component
 	private MavenProject mavenProject;
 
@@ -121,7 +124,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				goal("install-file"),
 				configuration(
 					element("file", bundle.filePath),
-					element("groupId", GROUP_ID),
+					element("groupId", groupId),
 					element("artifactId", bundle.artifactId),
 					element("version", bundle.version),
 					element("packaging", "jar"),
@@ -147,7 +150,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 					goal("install-file"),
 					configuration(
 						element("file", embed.file.toString()),
-						element("groupId", GROUP_ID),
+						element("groupId", groupId),
 						element("artifactId", bundle.artifactId),
 						element("version", bundle.version),
 						element("packaging", "jar"),
@@ -167,6 +170,9 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 		Document xml = DOMUtil.createDocument(basePom);
 		
 		Element project = xml.getDocumentElement();
+
+		Element groupIdEl = DOMUtil.createElement(xml, project, "groupId"); //$NON-NLS-1$
+		groupIdEl.setTextContent(this.groupId);
 		
 		Element artifactId = DOMUtil.createElement(xml, project, "artifactId"); //$NON-NLS-1$
 		artifactId.setTextContent(bundle.artifactId);
@@ -187,7 +193,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				if(dep != null) {
 					Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
 					Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
-					groupId.setTextContent(GROUP_ID);
+					groupId.setTextContent(this.groupId);
 					Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
 					depArtifactId.setTextContent(dep.artifactId);
 					Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
