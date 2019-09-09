@@ -131,8 +131,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 							// Find the packages to export from the Notes.jar
 							try (JarFile notesJarFile = new JarFile(notesJar.toFile())) {
 								String exports = notesJarFile.stream()
-										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent().toString().replace('/', '.'))
-										.distinct().filter(name -> Objects.nonNull(name))
+										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
+										.filter(Objects::nonNull)
+										.map(path -> path.toString().replace('/', '.'))
+										.distinct()
+										.filter(Objects::nonNull)
+										.filter(name -> !"META-INF".equals(name))
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
