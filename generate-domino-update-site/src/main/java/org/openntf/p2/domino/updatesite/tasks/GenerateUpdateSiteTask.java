@@ -52,6 +52,7 @@ import com.ibm.commons.xml.XMLException;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
+	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)");
 	private static final ThreadLocal<DateFormat> TIMESTAMP_FORMAT = ThreadLocal
 			.withInitial(() -> new SimpleDateFormat("yyyyMMdd")); //$NON-NLS-1$
 
@@ -131,8 +132,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 							// Find the packages to export from the Notes.jar
 							try (JarFile notesJarFile = new JarFile(notesJar.toFile())) {
 								String exports = notesJarFile.stream()
-										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent().toString().replace('/', '.'))
-										.distinct().filter(name -> Objects.nonNull(name))
+										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
+										.filter(Objects::nonNull)
+										.map(path -> path.toString().replace('/', '.'))
+										.distinct()
+										.filter(Objects::nonNull)
+										.filter(name -> !"META-INF".equals(name))
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
@@ -262,7 +267,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 				if(notesVersion.startsWith("Release ")) {
 					return notesVersion.substring("Release ".length());
 				} else {
-					return notesVersion;
+					// Beta builds have special formatting
+					Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
+					if(buildMatcher.matches()) {
+						return buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3) + '.' + buildMatcher.group(4);
+					} else {
+						return notesVersion;
+					}
 				}
 			}
 		}
