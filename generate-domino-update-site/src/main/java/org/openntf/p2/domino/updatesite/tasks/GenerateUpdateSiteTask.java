@@ -31,6 +31,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.jar.Attributes;
@@ -40,6 +41,7 @@ import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -68,44 +70,24 @@ public class GenerateUpdateSiteTask implements Runnable {
 	@Override
 	public void run() {
 		Path domino = checkDirectory(Paths.get(dominoDir));
-
-		Path source = checkDirectory(domino.resolve("osgi").resolve("shared").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path sourceFeatures = checkDirectory(source.resolve("features")); //$NON-NLS-1$
-		Path sourcePlugins = checkDirectory(source.resolve("plugins")); //$NON-NLS-1$
-		Path rcp = checkDirectory(domino.resolve("osgi").resolve("rcp").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path rcpFeatures = checkDirectory(rcp.resolve("features")); //$NON-NLS-1$
-		Path rcpPlugins = checkDirectory(rcp.resolve("plugins")); //$NON-NLS-1$
 		
-		Path frameworkEclipse = domino.resolve("framework").resolve("rcp").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path frameworkFeatures = frameworkEclipse.resolve("features"); //$NON-NLS-1$
-		Path frameworkPlugins = frameworkEclipse.resolve("plugins"); //$NON-NLS-1$
-
-		Path frameworkShared = domino.resolve("framework").resolve("shared").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path frameworkSharedFeatures = frameworkShared.resolve("features"); //$NON-NLS-1$
-		Path frameworkSharedPlugins = frameworkShared.resolve("plugins"); //$NON-NLS-1$
-
-		Path notesJar = checkFile(domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		List<Path> eclipsePaths = findEclipsePaths(domino);
+		Path notesJar = findNotesJar(domino);
 
 		try {
 			Path dest = mkDir(Paths.get(destDir));
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
 			
-			copyArtifacts(rcpFeatures, destFeatures);
-			copyArtifacts(sourceFeatures, destFeatures);
-			if(Files.isDirectory(frameworkFeatures)) {
-				copyArtifacts(frameworkFeatures, destFeatures);
-			}
-			if(Files.isDirectory(frameworkSharedFeatures)) {
-				copyArtifacts(frameworkSharedFeatures, destFeatures);
-			}
-			copyArtifacts(rcpPlugins, destPlugins);
-			copyArtifacts(sourcePlugins, destPlugins);
-			if(Files.isDirectory(frameworkPlugins)) {
-				copyArtifacts(frameworkPlugins, destPlugins);
-			}
-			if(Files.isDirectory(frameworkSharedPlugins)) {
-				copyArtifacts(frameworkSharedPlugins, destPlugins);
+			for(Path eclipse : eclipsePaths) {
+				Path features = eclipse.resolve("features");
+				if(Files.isDirectory(features)) {
+					copyArtifacts(features, destFeatures);
+				}
+				Path plugins = eclipse.resolve("plugins");
+				if(Files.isDirectory(plugins)) {
+					copyArtifacts(plugins, destPlugins);
+				}
 			}
 
 			{
@@ -195,13 +177,6 @@ public class GenerateUpdateSiteTask implements Runnable {
 			throw new RuntimeException("Directory does not exist: " + dir.toAbsolutePath());
 		}
 		return dir;
-	}
-
-	private Path checkFile(Path file) {
-		if (!Files.exists(file) || !Files.isRegularFile(file)) {
-			throw new RuntimeException("File does not exist: " + file.toAbsolutePath());
-		}
-		return file;
 	}
 
 	private Path mkDir(Path dir) throws IOException {
@@ -338,5 +313,48 @@ public class GenerateUpdateSiteTask implements Runnable {
 				throw new RuntimeException("Exception while building site.xml document", e);
 			}
 		}
+	}
+	
+	/**
+	 * @since 3.1.0
+	 */
+	private List<Path> findEclipsePaths(Path domino) {
+		// Account for various layouts
+		List<Path> eclipsePaths = Stream.of(
+				// macOS Notes client
+				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"),
+				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"),
+				// macOS Notes client pointed at Contents/MacOS
+				domino.resolve("shared").resolve("eclipse"),
+				domino.resolve("rcp").resolve("eclipse"),
+				// Domino and Windows Notes
+				domino.resolve("osgi").resolve("shared").resolve("eclipse"),
+				domino.resolve("osgi").resolve("rcp").resolve("eclipse"),
+				// Windows Notes
+				domino.resolve("framework").resolve("shared").resolve("eclipse"),
+				domino.resolve("framework").resolve("rcp").resolve("eclipse")
+			)
+			.filter(path -> Files.exists(path))
+			.collect(Collectors.toList());
+		if(eclipsePaths.isEmpty()) {
+			throw new IllegalArgumentException("Unable to locate plugin directories within " + domino);
+		}
+		return eclipsePaths;
+	}
+
+	/**
+	 * @since 3.1.0
+	 */
+	private Path findNotesJar(Path domino) {
+		return Stream.of(
+			// macOS Notes client
+			domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar"),
+			// All Notes and Domino, including macOS Notes client pointed at Contents/MacOS
+			domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar")
+		)
+		.filter(Files::exists)
+		.filter(Files::isRegularFile)
+		.findFirst()
+		.orElseThrow(() -> new IllegalArgumentException("Unable to locate Notes.jar within " + domino));
 	}
 }
