@@ -99,6 +99,12 @@
 			<version>1.18.8</version>
 			<scope>provided</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.eclipse.tycho</groupId>
+			<artifactId>org.eclipse.osgi</artifactId>
+			<version>3.13.0.v20180226-1711</version>
+		</dependency>
 	</dependencies>
 	
 	<prerequisites>
