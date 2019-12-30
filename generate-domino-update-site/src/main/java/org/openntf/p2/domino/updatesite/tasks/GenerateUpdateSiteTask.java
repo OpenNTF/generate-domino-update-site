@@ -199,9 +199,21 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private void copyOrPack(Path source, Path destDir) throws Exception {
 		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
+			// Check for a MANIFEST.MF inside the Jar
+			try(JarFile jarFile = new JarFile(source.toFile())) {
+				if(jarFile.getEntry("META-INF/MANIFEST.MF") == null) { //$NON-NLS-1$
+					return;
+				}
+			}
+			
 			Path dest = destDir.resolve(source.getFileName());
 			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
 		} else if (Files.isDirectory(source)) {
+			// Check for a MANIFEST.MF in a subdirectory
+			if(!Files.isRegularFile(source.resolve("META-INF").resolve("MANIFEST.MF"))) { //$NON-NLS-1$ //$NON-NLS-2$
+				return;
+			}
+			
 			// Must be an unpacked plugin
 			Path destPlugin = destDir.resolve(source.getFileName() + ".jar"); //$NON-NLS-1$
 			zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath());
