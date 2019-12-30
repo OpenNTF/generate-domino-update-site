@@ -28,12 +28,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.TemporalAccessor;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.jar.Attributes;
@@ -47,6 +42,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.openntf.p2.domino.updatesite.util.VersionUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -56,9 +52,6 @@ import com.ibm.commons.xml.XMLException;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
-	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)"); //$NON-NLS-1$
-	private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd"); //$NON-NLS-1$
-	private static final DateTimeFormatter NOTESVERSIONDATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US); // U-S-A! U-S-A! //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
@@ -241,38 +234,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Properties props = new Properties();
 				props.load(is);
 				String notesVersion = props.getProperty("NotesVersion", ""); //$NON-NLS-1$ //$NON-NLS-2$
-				StringBuilder result = new StringBuilder();
-				if(notesVersion.startsWith("Release ")) { //$NON-NLS-1$
-					result.append(notesVersion.substring("Release ".length())); //$NON-NLS-1$
-					// Append a .0 if needed
-					if(StringUtil.countMatch(result.toString(), '.') < 2) {
-						result.append(".0"); //$NON-NLS-1$
-					}
-				} else {
-					// Beta builds have special formatting
-					Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
-					if(buildMatcher.matches()) {
-						result.append(buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3));
-					} else {
-						result.append(notesVersion);
-					}
-				}
-
-				// Check the NotesVersionDate to get a qualifier
 				String notesVersionDate = props.getProperty("NotesVersionDate", ""); //$NON-NLS-1$ //$NON-NLS-2$
-				TemporalAccessor parsedDate = null;
-				try {
-					parsedDate = NOTESVERSIONDATE_FORMAT.parse(notesVersionDate);
-				} catch(DateTimeParseException e) {
-					parsedDate = null;
-				}
-				if(parsedDate == null) {
-					// Then just use today
-					parsedDate = LocalDate.now();
-				}
-				result.append('.');
-				result.append(TIMESTAMP_FORMAT.format(parsedDate));
-				return result.toString();
+				
+				return VersionUtil.generateNotesJarVersion(notesVersion, notesVersionDate);
 			}
 		}
 	}
