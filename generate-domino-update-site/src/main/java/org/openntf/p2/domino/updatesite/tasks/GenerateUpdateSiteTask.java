@@ -54,14 +54,14 @@ import com.ibm.commons.xml.XMLException;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
-	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)");
+	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)"); //$NON-NLS-1$
 	private static final ThreadLocal<DateFormat> TIMESTAMP_FORMAT = ThreadLocal
 			.withInitial(() -> new SimpleDateFormat("yyyyMMdd")); //$NON-NLS-1$
 
-	private final String dominoDir;
-	private final String destDir;
+	private final Path dominoDir;
+	private final Path destDir;
 
-	public GenerateUpdateSiteTask(String dominoDir, String destDir) {
+	public GenerateUpdateSiteTask(Path dominoDir, Path destDir) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
@@ -69,13 +69,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	@Override
 	public void run() {
-		Path domino = checkDirectory(Paths.get(dominoDir));
+		Path domino = checkDirectory(dominoDir);
 		
 		List<Path> eclipsePaths = findEclipsePaths(domino);
 		Path notesJar = findNotesJar(domino);
 
 		try {
-			Path dest = mkDir(Paths.get(destDir));
+			Path dest = mkDir(destDir);
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
 			
