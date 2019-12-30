@@ -293,7 +293,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Element root = DOMUtil.createElement(doc, "site"); //$NON-NLS-1$
 
 				// Create the category entry if applicable
-				String category = "IBM XPages Runtime"; //$NON-NLS-1$
+				String category = "XPages Runtime"; //$NON-NLS-1$
 				if (StringUtil.isNotEmpty(category)) {
 					Element categoryDef = DOMUtil.createElement(doc, root, "category-def"); //$NON-NLS-1$
 					categoryDef.setAttribute("name", category); //$NON-NLS-1$
@@ -301,7 +301,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				}
 
 				Files.list(features)
-					.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar"))
+					.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
 					.forEach(feature -> {
 					String featureFilename = feature.getFileName().toString();
 					Matcher matcher = FEATURE_FILENAME_PATTERN.matcher(featureFilename);
