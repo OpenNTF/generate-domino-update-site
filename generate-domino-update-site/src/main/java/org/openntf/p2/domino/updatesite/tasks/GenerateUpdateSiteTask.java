@@ -28,10 +28,12 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.TemporalAccessor;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.jar.Attributes;
@@ -55,8 +57,8 @@ import com.ibm.commons.xml.XMLException;
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
 	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)"); //$NON-NLS-1$
-	private static final ThreadLocal<DateFormat> TIMESTAMP_FORMAT = ThreadLocal
-			.withInitial(() -> new SimpleDateFormat("yyyyMMdd")); //$NON-NLS-1$
+	private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd"); //$NON-NLS-1$
+	private static final DateTimeFormatter NOTESVERSIONDATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US); // U-S-A! U-S-A! //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
@@ -92,11 +94,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 			{
 				String baseVersion = readNotesVersion(notesJar);
-				String timestamp = TIMESTAMP_FORMAT.get().format(new Date());
-				String version = baseVersion + "." + timestamp + "-1500"; //$NON-NLS-1$ //$NON-NLS-2$
+				String version = baseVersion + "-1500"; //$NON-NLS-1$
+				String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
 				// Create the Notes API plugin for the true version, since the shipping plugin one is often out of step
-				{
-					String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
+				if(Files.list(destPlugins).noneMatch(p -> p.getFileName().toString().startsWith(bundleId + '_' + baseVersion))) {
+					// "-1500" is taken from common suffixes seen from IBM/HCL
 					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
@@ -132,8 +134,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 				// Create the faux Notes.jar fragment
 				{
-					String bundleId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
-					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					String fragmentId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
+					Path plugin = destPlugins.resolve(fragmentId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
 							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
@@ -144,7 +146,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Fragment-Host", "com.ibm.notes.java.api"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Name", "Notes Java API Windows and Linux Fragment"); //$NON-NLS-1$ //$NON-NLS-2$
-							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-SymbolicName", fragmentId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
 							manifest.write(jos);
@@ -239,17 +241,38 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Properties props = new Properties();
 				props.load(is);
 				String notesVersion = props.getProperty("NotesVersion", ""); //$NON-NLS-1$ //$NON-NLS-2$
+				StringBuilder result = new StringBuilder();
 				if(notesVersion.startsWith("Release ")) { //$NON-NLS-1$
-					return notesVersion.substring("Release ".length()); //$NON-NLS-1$
+					result.append(notesVersion.substring("Release ".length())); //$NON-NLS-1$
+					// Append a .0 if needed
+					if(StringUtil.countMatch(result.toString(), '.') < 2) {
+						result.append(".0"); //$NON-NLS-1$
+					}
 				} else {
 					// Beta builds have special formatting
 					Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
 					if(buildMatcher.matches()) {
-						return buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3) + '.' + buildMatcher.group(4);
+						result.append(buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3));
 					} else {
-						return notesVersion;
+						result.append(notesVersion);
 					}
 				}
+
+				// Check the NotesVersionDate to get a qualifier
+				String notesVersionDate = props.getProperty("NotesVersionDate", ""); //$NON-NLS-1$ //$NON-NLS-2$
+				TemporalAccessor parsedDate = null;
+				try {
+					parsedDate = NOTESVERSIONDATE_FORMAT.parse(notesVersionDate);
+				} catch(DateTimeParseException e) {
+					parsedDate = null;
+				}
+				if(parsedDate == null) {
+					// Then just use today
+					parsedDate = LocalDate.now();
+				}
+				result.append('.');
+				result.append(TIMESTAMP_FORMAT.format(parsedDate));
+				return result.toString();
 			}
 		}
 	}
