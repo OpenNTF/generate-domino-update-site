@@ -16,7 +16,12 @@
 package org.openntf.p2.domino.updatesite;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
 
+import org.apache.commons.lang3.SystemUtils;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -30,7 +35,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	/**
 	 * Source Domino program directory
 	 */
-	@Parameter(property="src", required=true)
+	@Parameter(property="src", required=false, defaultValue="${notes-program}")
 	private File src;
 	
 	/**
@@ -41,10 +46,56 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
-		String dominoDir = src.getAbsolutePath();
-		String destDir = dest.getAbsolutePath();
+		Path dominoDir;
+		if(src != null) {
+			dominoDir = src.toPath();
+		} else {
+			dominoDir = findDominoDir();
+		}
+		if(dominoDir == null || !Files.exists(dominoDir)) {
+			throw new MojoExecutionException("Unable to locate Domino directory; please specify using the `src` parameter");
+		}
+		Path destDir = dest.toPath();
 		
 		new GenerateUpdateSiteTask(dominoDir, destDir).run();
 	}
 
+	private Path findDominoDir() {
+		if(SystemUtils.IS_OS_MAC) {
+			return Stream.of(
+					"/Applications/HCL Notes.app/Contents/MacOS", //$NON-NLS-1$
+					"/Applications/IBM Notes.app/Contents/MacOS" //$NON-NLS-1$
+				).map(Paths::get)
+				.filter(Files::exists)
+				.findFirst()
+				.orElse(null);
+		} else if(SystemUtils.IS_OS_WINDOWS) {
+			return Stream.of(
+					"C:\\Program Files\\HCL\\Domino", //$NON-NLS-1$
+					"C:\\Program Files\\IBM\\Domino", //$NON-NLS-1$
+					"C:\\Domino", //$NON-NLS-1$
+					"C:\\Program Files (x86)\\HCL\\Domino", //$NON-NLS-1$
+					"C:\\Program Files (x86)\\IBM\\Domino", //$NON-NLS-1$
+					"C:\\Program Files\\HCL\\Notes", //$NON-NLS-1$
+					"C:\\Program Files\\IBM\\Notes", //$NON-NLS-1$
+					"C:\\Program Files (x86)\\HCL\\Notes", //$NON-NLS-1$
+					"C:\\Program Files (x86)\\IBM\\Notes", //$NON-NLS-1$
+					"C:\\Notes" //$NON-NLS-1$
+				).map(Paths::get)
+				.filter(Files::exists)
+				.findFirst()
+				.orElse(null);
+		} else if(SystemUtils.IS_OS_LINUX) {
+			return Stream.of(
+					"/opt/hcl/domino/notes/latest/linux", //$NON-NLS-1$
+					"/opt/ibm/domino/notes/latest/linux", //$NON-NLS-1$
+					"/opt/ibm/lotus/domino/notes/latest/linux", //$NON-NLS-1$
+					"/opt/lotus/domino/notes/latest/linux" //$NON-NLS-1$
+				).map(Paths::get)
+				.filter(Files::exists)
+				.findFirst()
+				.orElse(null);
+		}
+		return null;
+	}
 }

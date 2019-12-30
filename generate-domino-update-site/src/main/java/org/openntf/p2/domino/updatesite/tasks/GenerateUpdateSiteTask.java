@@ -28,9 +28,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.jar.Attributes;
@@ -40,9 +38,11 @@ import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.openntf.p2.domino.updatesite.util.VersionUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -52,14 +52,11 @@ import com.ibm.commons.xml.XMLException;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
-	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)");
-	private static final ThreadLocal<DateFormat> TIMESTAMP_FORMAT = ThreadLocal
-			.withInitial(() -> new SimpleDateFormat("yyyyMMdd")); //$NON-NLS-1$
 
-	private final String dominoDir;
-	private final String destDir;
+	private final Path dominoDir;
+	private final Path destDir;
 
-	public GenerateUpdateSiteTask(String dominoDir, String destDir) {
+	public GenerateUpdateSiteTask(Path dominoDir, Path destDir) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
@@ -67,54 +64,34 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	@Override
 	public void run() {
-		Path domino = checkDirectory(Paths.get(dominoDir));
-
-		Path source = checkDirectory(domino.resolve("osgi").resolve("shared").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path sourceFeatures = checkDirectory(source.resolve("features")); //$NON-NLS-1$
-		Path sourcePlugins = checkDirectory(source.resolve("plugins")); //$NON-NLS-1$
-		Path rcp = checkDirectory(domino.resolve("osgi").resolve("rcp").resolve("eclipse")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path rcpFeatures = checkDirectory(rcp.resolve("features")); //$NON-NLS-1$
-		Path rcpPlugins = checkDirectory(rcp.resolve("plugins")); //$NON-NLS-1$
+		Path domino = checkDirectory(dominoDir);
 		
-		Path frameworkEclipse = domino.resolve("framework").resolve("rcp").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path frameworkFeatures = frameworkEclipse.resolve("features"); //$NON-NLS-1$
-		Path frameworkPlugins = frameworkEclipse.resolve("plugins"); //$NON-NLS-1$
-
-		Path frameworkShared = domino.resolve("framework").resolve("shared").resolve("eclipse"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		Path frameworkSharedFeatures = frameworkShared.resolve("features"); //$NON-NLS-1$
-		Path frameworkSharedPlugins = frameworkShared.resolve("plugins"); //$NON-NLS-1$
-
-		Path notesJar = checkFile(domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		List<Path> eclipsePaths = findEclipsePaths(domino);
+		Path notesJar = findNotesJar(domino);
 
 		try {
-			Path dest = mkDir(Paths.get(destDir));
+			Path dest = mkDir(destDir);
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
 			
-			copyArtifacts(rcpFeatures, destFeatures);
-			copyArtifacts(sourceFeatures, destFeatures);
-			if(Files.isDirectory(frameworkFeatures)) {
-				copyArtifacts(frameworkFeatures, destFeatures);
-			}
-			if(Files.isDirectory(frameworkSharedFeatures)) {
-				copyArtifacts(frameworkSharedFeatures, destFeatures);
-			}
-			copyArtifacts(rcpPlugins, destPlugins);
-			copyArtifacts(sourcePlugins, destPlugins);
-			if(Files.isDirectory(frameworkPlugins)) {
-				copyArtifacts(frameworkPlugins, destPlugins);
-			}
-			if(Files.isDirectory(frameworkSharedPlugins)) {
-				copyArtifacts(frameworkSharedPlugins, destPlugins);
+			for(Path eclipse : eclipsePaths) {
+				Path features = eclipse.resolve("features"); //$NON-NLS-1$
+				if(Files.isDirectory(features)) {
+					copyArtifacts(features, destFeatures);
+				}
+				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
+				if(Files.isDirectory(plugins)) {
+					copyArtifacts(plugins, destPlugins);
+				}
 			}
 
 			{
 				String baseVersion = readNotesVersion(notesJar);
-				String timestamp = TIMESTAMP_FORMAT.get().format(new Date());
-				String version = baseVersion + "." + timestamp + "-1500"; //$NON-NLS-1$ //$NON-NLS-2$
+				String version = baseVersion + "-1500"; //$NON-NLS-1$
+				String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
 				// Create the Notes API plugin for the true version, since the shipping plugin one is often out of step
-				{
-					String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
+				if(Files.list(destPlugins).noneMatch(p -> p.getFileName().toString().startsWith(bundleId + '_' + baseVersion))) {
+					// "-1500" is taken from common suffixes seen from IBM/HCL
 					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
@@ -137,7 +114,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 										.map(path -> path.toString().replace('/', '.'))
 										.distinct()
 										.filter(Objects::nonNull)
-										.filter(name -> !"META-INF".equals(name))
+										.filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
@@ -150,8 +127,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 				// Create the faux Notes.jar fragment
 				{
-					String bundleId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
-					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					String fragmentId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
+					Path plugin = destPlugins.resolve(fragmentId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 						try (JarOutputStream jos = new JarOutputStream(fos)) {
 							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
@@ -162,7 +139,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Fragment-Host", "com.ibm.notes.java.api"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Name", "Notes Java API Windows and Linux Fragment"); //$NON-NLS-1$ //$NON-NLS-2$
-							attrs.putValue("Bundle-SymbolicName", bundleId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-SymbolicName", fragmentId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
 							manifest.write(jos);
@@ -179,7 +156,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			// Create site.xml
 			buildSiteXml(dest);
 
-			// Have Eclipse build p2 metadata
+			// Generate p2 metadata based on the site.xml
 			new GenerateP2MetadataTask(dest).run();
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -195,13 +172,6 @@ public class GenerateUpdateSiteTask implements Runnable {
 			throw new RuntimeException("Directory does not exist: " + dir.toAbsolutePath());
 		}
 		return dir;
-	}
-
-	private Path checkFile(Path file) {
-		if (!Files.exists(file) || !Files.isRegularFile(file)) {
-			throw new RuntimeException("File does not exist: " + file.toAbsolutePath());
-		}
-		return file;
 	}
 
 	private Path mkDir(Path dir) throws IOException {
@@ -229,9 +199,21 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private void copyOrPack(Path source, Path destDir) throws Exception {
 		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
+			// Check for a MANIFEST.MF inside the Jar
+			try(JarFile jarFile = new JarFile(source.toFile())) {
+				if(jarFile.getEntry("META-INF/MANIFEST.MF") == null) { //$NON-NLS-1$
+					return;
+				}
+			}
+			
 			Path dest = destDir.resolve(source.getFileName());
 			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
 		} else if (Files.isDirectory(source)) {
+			// Check for a MANIFEST.MF in a subdirectory
+			if(!Files.isRegularFile(source.resolve("META-INF").resolve("MANIFEST.MF"))) { //$NON-NLS-1$ //$NON-NLS-2$
+				return;
+			}
+			
 			// Must be an unpacked plugin
 			Path destPlugin = destDir.resolve(source.getFileName() + ".jar"); //$NON-NLS-1$
 			zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath());
@@ -259,22 +241,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 	
 	private String readNotesVersion(Path notesJar) throws IOException {
 		try(JarFile jarFile = new JarFile(notesJar.toFile())) {
-			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties");
+			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties"); //$NON-NLS-1$
 			try(InputStream is = jarFile.getInputStream(versionProps)) {
 				Properties props = new Properties();
 				props.load(is);
-				String notesVersion = props.getProperty("NotesVersion", "");
-				if(notesVersion.startsWith("Release ")) {
-					return notesVersion.substring("Release ".length());
-				} else {
-					// Beta builds have special formatting
-					Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
-					if(buildMatcher.matches()) {
-						return buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3) + '.' + buildMatcher.group(4);
-					} else {
-						return notesVersion;
-					}
-				}
+				String notesVersion = props.getProperty("NotesVersion", ""); //$NON-NLS-1$ //$NON-NLS-2$
+				String notesVersionDate = props.getProperty("NotesVersionDate", ""); //$NON-NLS-1$ //$NON-NLS-2$
+				
+				return VersionUtil.generateNotesJarVersion(notesVersion, notesVersionDate);
 			}
 		}
 	}
@@ -295,7 +269,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Element root = DOMUtil.createElement(doc, "site"); //$NON-NLS-1$
 
 				// Create the category entry if applicable
-				String category = "IBM XPages Runtime"; //$NON-NLS-1$
+				String category = "XPages Runtime"; //$NON-NLS-1$
 				if (StringUtil.isNotEmpty(category)) {
 					Element categoryDef = DOMUtil.createElement(doc, root, "category-def"); //$NON-NLS-1$
 					categoryDef.setAttribute("name", category); //$NON-NLS-1$
@@ -303,7 +277,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				}
 
 				Files.list(features)
-					.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar"))
+					.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
 					.forEach(feature -> {
 					String featureFilename = feature.getFileName().toString();
 					Matcher matcher = FEATURE_FILENAME_PATTERN.matcher(featureFilename);
@@ -338,5 +312,48 @@ public class GenerateUpdateSiteTask implements Runnable {
 				throw new RuntimeException("Exception while building site.xml document", e);
 			}
 		}
+	}
+	
+	/**
+	 * @since 3.1.0
+	 */
+	private List<Path> findEclipsePaths(Path domino) {
+		// Account for various layouts
+		List<Path> eclipsePaths = Stream.of(
+				// macOS Notes client
+				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// macOS Notes client pointed at Contents/MacOS
+				domino.resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
+				domino.resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
+				// Domino and Windows Notes
+				domino.resolve("osgi").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.resolve("osgi").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				// Windows Notes
+				domino.resolve("framework").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.resolve("framework").resolve("rcp").resolve("eclipse") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			)
+			.filter(path -> Files.exists(path))
+			.collect(Collectors.toList());
+		if(eclipsePaths.isEmpty()) {
+			throw new IllegalArgumentException("Unable to locate plugin directories within " + domino);
+		}
+		return eclipsePaths;
+	}
+
+	/**
+	 * @since 3.1.0
+	 */
+	private Path findNotesJar(Path domino) {
+		return Stream.of(
+			// macOS Notes client
+			domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+			// All Notes and Domino, including macOS Notes client pointed at Contents/MacOS
+			domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		)
+		.filter(Files::exists)
+		.filter(Files::isRegularFile)
+		.findFirst()
+		.orElseThrow(() -> new IllegalArgumentException("Unable to locate Notes.jar within " + domino));
 	}
 }
