@@ -18,20 +18,29 @@ package org.openntf.p2.domino.updatesite;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
@@ -42,6 +51,8 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.eclipse.osgi.util.ManifestElement;
+import org.osgi.framework.Version;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -59,7 +70,9 @@ import static org.twdata.maven.mojoexecutor.MojoExecutor.*;
  * 
  * @author Jesse Gallagher
  * @since 3.0.0
+ * @deprecated Use <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
  */
+@Deprecated
 @Mojo(name="mavenizeBundles", requiresProject=false)
 public class MavenizeBundlesMojo extends AbstractMojo {
 	
@@ -74,6 +87,9 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 	@Parameter(property="groupId", required=false, defaultValue=GROUP_ID)
 	private String groupId;
 	
+	@Parameter(property="optionalDependencies", required=false)
+	private boolean optionalDependencies = true;
+	
 	@Component
 	private MavenProject mavenProject;
 
@@ -85,7 +101,8 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
-		Map<String, BundleInfo> bundles = new HashMap<>();
+		List<BundleInfo> bundles = new ArrayList<>();
+		Map<String, BundleInfo> bundlesByName = new HashMap<>();
 		String basePom;
 		
 		try {
@@ -102,15 +119,18 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				.filter(path -> path.toString().toLowerCase().endsWith(".jar"))
 				.map(this::toInfo)
 				.filter(Objects::nonNull)
-				.forEach(b -> bundles.put(b.artifactId, b));
+				.forEach(b -> {
+					bundles.add(b);
+					bundlesByName.put(b.artifactId, b);
+				});
 		} catch(IOException e) {
 			throw new MojoExecutionException("Exception while processing bundles");
 		}
 			
-		for(BundleInfo bundle : bundles.values()) {
+		for(BundleInfo bundle : bundles) {
 			Path tempPom;
 			try {
-				tempPom = generateBundlePom(bundle, basePom, bundles);
+				tempPom = generateBundlePom(bundle, basePom, bundlesByName);
 			} catch(XMLException | IOException e) {
 				throw new MojoExecutionException("Exception while generating temporary pom", e);
 			}
@@ -198,6 +218,9 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 					depArtifactId.setTextContent(dep.artifactId);
 					Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
 					depVersion.setTextContent(dep.version);
+					if(optionalDependencies) {
+						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true");
+					}
 				}
 			}
 		}
@@ -292,7 +315,101 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				}
 			}
 			
-			return new BundleInfo(name, vendor, artifactId, version, path.toAbsolutePath().toString(), requireEntries, embeds);	
+			// Create a copy of the JAR in a temp location to tweak the requirements
+			Path tempFile = Files.createTempFile(path.getFileName().toString(), ".jar");
+			tempFile.toFile().deleteOnExit();
+			try(OutputStream os = Files.newOutputStream(tempFile, StandardOpenOption.TRUNCATE_EXISTING)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+					try(InputStream is = Files.newInputStream(path)) {
+						try(ZipInputStream zis = new ZipInputStream(is)) {
+							ZipEntry entry = zis.getNextEntry();
+							while(entry != null) {
+								zos.putNextEntry(entry);
+								if("META-INF/MANIFEST.MF".equals(entry.getName())) {
+									Manifest tempManifest = new Manifest();
+									tempManifest.read(zis);
+									
+									// Replace the com.ibm.pvc.servlet hard requirement with just servlet imports
+									String requireBundle = tempManifest.getMainAttributes().getValue("Require-Bundle");
+									if(StringUtil.isNotEmpty(requireBundle)) {
+										ManifestElement[] elements = ManifestElement.parseHeader("Require-Bundle", requireBundle);
+										requireBundle = Stream.of(elements)
+											.filter(el -> !"com.ibm.pvc.servlet".equals(el.getValue()))
+											.map(el -> el.toString() + ("optional".equals(el.getDirective("resolution")) ? "" : ";resolution:=optional"))
+											.collect(Collectors.joining(","));
+										if(StringUtil.isEmpty(requireBundle)) {
+											tempManifest.getMainAttributes().remove(new java.util.jar.Attributes.Name("Require-Bundle"));
+										} else {
+											tempManifest.getMainAttributes().putValue("Require-Bundle", requireBundle);
+										}
+									}
+									
+									// Validate the bundle version
+									String versionString = tempManifest.getMainAttributes().getValue("Bundle-Version");
+									if(StringUtil.isNotEmpty(versionString)) {
+										try {
+											new Version(versionString);
+										} catch(IllegalArgumentException e) {
+											// This case should be that there are more than three "."s
+											String[] bits = versionString.split("\\.", 4);
+											if(bits.length >= 4) {
+												versionString = bits[0] + "." + bits[1] + "." + bits[2] + "." + bits[3].replace(".", "_");
+												tempManifest.getMainAttributes().putValue("Bundle-Version", versionString);
+											} else {
+												throw e;
+											}
+										}
+									}
+									
+									// Cover cases where bundles no longer automatically get javax.servlet transitively, as well
+									//   as some XML things that these bundles assume are passively available, but which newer OSGi
+									//   containers may not automatically provide
+									List<String> imports = Arrays.asList(
+										"javax.servlet",
+										"javax.servlet.*",
+										"org.w3c.dom",
+										"org.w3c.dom.*",
+										"org.xml.*",
+										"javax.xml.*",
+										"lotus.*"
+									);
+									tempManifest.getMainAttributes().putValue("DynamicImport-Package", String.join(",", imports));
+									
+									tempManifest.write(zos);
+								} else {
+									StreamUtil.copyStream(zis, zos);
+								}
+								
+								zis.closeEntry();
+								entry = zis.getNextEntry();
+							}
+							
+							// Very special handling of com.ibm.notes.java.api to make it play nicer in other environments
+							if(path.getFileName().startsWith("com.ibm.notes.java.api_")) {
+								// Find the companion fragment
+								Optional<Path> maybeFragment = Files.find(path.getParent(), 0,
+										(p, attr) -> p.getFileName().startsWith("com.ibm.notes.java.api.win32.linux_")).findFirst();
+								if(maybeFragment.isPresent()) {
+									ZipFile fragmentZip = new ZipFile(maybeFragment.get().toFile());
+									try {
+										ZipEntry notesJar = fragmentZip.getEntry("Notes.jar");
+										if(notesJar != null) {
+											zos.putNextEntry(notesJar);
+											try(InputStream nis = fragmentZip.getInputStream(notesJar)) {
+												StreamUtil.copyStream(nis, zos);
+											}
+										}
+									} finally {
+										fragmentZip.close();
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			return new BundleInfo(name, vendor, artifactId, version, tempFile.toAbsolutePath().toString(), requireEntries, embeds);	
 		} finally {
 			jarFile.close();
 		}
