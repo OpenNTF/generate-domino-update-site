@@ -75,6 +75,6 @@ $ mvn org.openntf.p2:generate-domino-update-site:mavenizeBundles \
 	-DgroupId=some.group.id # Optional
 ```
 
-- `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino"
-- `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite"
+- `src` is the location of the Update Site
+- `groupId` is an optional group ID to use for the installed bundles. It defaults to "com.ibm.xsp"
 
