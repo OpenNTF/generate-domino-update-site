@@ -161,7 +161,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			// Create site.xml
 			buildSiteXml(dest);
 
-			// Have Eclipse build p2 metadata
+			// Generate p2 metadata based on the site.xml
 			new GenerateP2MetadataTask(dest).run();
 		} catch (Exception e) {
 			throw new RuntimeException(e);
