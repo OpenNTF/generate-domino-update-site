@@ -81,7 +81,7 @@ public class GenerateP2MetadataTask implements Runnable {
 		}
 		
 		Element repository = DOMUtil.createElement(doc, "repository"); //$NON-NLS-1$
-		repository.setAttribute("name", "IBM XPages Runtime Artifacts"); //$NON-NLS-1$ //$NON-NLS-2$
+		repository.setAttribute("name", "XPages Runtime Artifacts"); //$NON-NLS-1$ //$NON-NLS-2$
 		repository.setAttribute("type", "org.eclipse.equinox.p2.artifact.repository.simpleRepository"); //$NON-NLS-1$ //$NON-NLS-2$
 		repository.setAttribute("version", "1"); //$NON-NLS-1$ //$NON-NLS-2$
 		
