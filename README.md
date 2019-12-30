@@ -17,10 +17,10 @@ To use the tool from the command line, either add the OpenNTF Maven repository (
 The tool performs several tasks to generate its result:
 
 1. Copies the features and plugins from the  `osgi/rcp/eclipe` and `osgi/shared/eclipse`  directories, converting unpacked folder artifacts back into Jar files
-2. If pointed to a Notes installation directory, it will do the same with the `framework` directory, which contains UI-specific plugins
-3. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date
+2. If pointed to a Windows Notes installation directory, it will do the same with the `framework` directory, which contains UI-specific plugins
+3. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date, if needed
 4. Creates a basic site.xml file
-5. Generates artifacts.jar and content.jar files using Eclipse's p2 generator
+5. Generates artifacts.jar and content.jar files
 
 ### Command Line Use
 
@@ -33,8 +33,7 @@ $ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
 	-Dsrc="/Volumes/C/Program Files/IBM/Domino" \
 	-Ddest="/Users/someuser/Desktop/UpdateSite"
 ```
-- `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino"
-
+- `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino". If unspecified, the Mojo will attempt to find a Domino or Notes installation based on common locations
 - `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite"
 
 ### Programmatic Use
@@ -42,6 +41,10 @@ $ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
 To incorporate the tool into another program, create a new object of class `org.openntf.p2.domino.updatesite.tasks.GenerateUpdateSiteTask` with the same parameters as via the command line and execute its `run` method (or provide it to any executor that can take a `Runnable`).
 
 ## `mavenizeBundles` Mojo
+
+### Deprecation
+
+Though this Mojo still exists in this plugin, it is deprecated in favor of the [`p2-layout-resolver` plugin](https://github.com/OpenNTF/p2-layout-provider).
 
 ### What It Does
 
