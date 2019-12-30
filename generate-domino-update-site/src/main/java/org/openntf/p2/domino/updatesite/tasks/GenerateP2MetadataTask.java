@@ -53,16 +53,16 @@ public class GenerateP2MetadataTask implements Runnable {
 	public void run() {
 		try {
 			Document artifactsXml = createArtifactsXml();
-			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
 				try(ZipOutputStream zos = new ZipOutputStream(os)) {
-					zos.putNextEntry(new ZipEntry("artifacts.xml"));
+					zos.putNextEntry(new ZipEntry("artifacts.xml")); //$NON-NLS-1$
 					DOMUtil.serialize(zos, artifactsXml, Format.defaultFormat);
 				}
 			}
 			Document contentXml = createContentXml();
-			try(OutputStream os = Files.newOutputStream(dest.resolve("content.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			try(OutputStream os = Files.newOutputStream(dest.resolve("content.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
 				try(ZipOutputStream zos = new ZipOutputStream(os)) {
-					zos.putNextEntry(new ZipEntry("content.xml"));
+					zos.putNextEntry(new ZipEntry("content.xml")); //$NON-NLS-1$
 					DOMUtil.serialize(zos, contentXml, Format.defaultFormat);	
 				}
 			}
@@ -118,7 +118,7 @@ public class GenerateP2MetadataTask implements Runnable {
 		Element artifacts = DOMUtil.createElement(doc, repository, "artifacts"); //$NON-NLS-1$
 		int[] size = new int[] { 0 };
 		
-		Files.list(dest.resolve("features")).forEach(feature -> {
+		Files.list(dest.resolve("features")).forEach(feature -> { //$NON-NLS-1$
 			size[0]++;
 			try {
 				Document featureXml = getFeatureXml(feature);
@@ -126,8 +126,8 @@ public class GenerateP2MetadataTask implements Runnable {
 				
 				Element artifact = DOMUtil.createElement(doc, artifacts, "artifact"); //$NON-NLS-1$
 				artifact.setAttribute("classifier", "org.eclipse.update.feature"); //$NON-NLS-1$ //$NON-NLS-2$
-				artifact.setAttribute("id", rootElement.getAttribute("id")); //$NON-NLS-1$
-				artifact.setAttribute("version", rootElement.getAttribute("version")); //$NON-NLS-1$
+				artifact.setAttribute("id", rootElement.getAttribute("id")); //$NON-NLS-1$ //$NON-NLS-2$
+				artifact.setAttribute("version", rootElement.getAttribute("version")); //$NON-NLS-1$ //$NON-NLS-2$
 				
 				Element properties = DOMUtil.createElement(doc, artifact, "properties"); //$NON-NLS-1$
 				properties.setAttribute("size", "3"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -147,7 +147,7 @@ public class GenerateP2MetadataTask implements Runnable {
 				throw new RuntimeException(e);
 			}
 		});
-		Files.list(dest.resolve("plugins")).forEach(plugin -> {
+		Files.list(dest.resolve("plugins")).forEach(plugin -> { //$NON-NLS-1$
 			size[0]++;
 			try {
 				Manifest manifest = getPluginManifest(plugin);
@@ -156,7 +156,7 @@ public class GenerateP2MetadataTask implements Runnable {
 				artifact.setAttribute("classifier", "osgi.bundle"); //$NON-NLS-1$ //$NON-NLS-2$
 				String symbolicName = getPluginId(manifest);
 				artifact.setAttribute("id", symbolicName); //$NON-NLS-1$
-				artifact.setAttribute("version", manifest.getMainAttributes().getValue("Bundle-Version")); //$NON-NLS-1$
+				artifact.setAttribute("version", manifest.getMainAttributes().getValue("Bundle-Version")); //$NON-NLS-1$ //$NON-NLS-2$
 				
 				Element properties = DOMUtil.createElement(doc, artifact, "properties"); //$NON-NLS-1$
 				properties.setAttribute("size", "2"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -187,7 +187,7 @@ public class GenerateP2MetadataTask implements Runnable {
 		}
 		
 		Element repository = DOMUtil.createElement(doc, "repository"); //$NON-NLS-1$
-		repository.setAttribute("name", "IBM XPages Runtime"); //$NON-NLS-1$
+		repository.setAttribute("name", "XPages Runtime"); //$NON-NLS-1$ //$NON-NLS-2$
 		repository.setAttribute("type", "org.eclipse.equinox.internal.p2.metadata.repository.LocalMetadataRepository"); //$NON-NLS-1$ //$NON-NLS-2$
 		repository.setAttribute("version", "1"); //$NON-NLS-1$ //$NON-NLS-2$
 		
@@ -207,29 +207,29 @@ public class GenerateP2MetadataTask implements Runnable {
 		Element units = DOMUtil.createElement(doc, repository, "units"); //$NON-NLS-1$
 		int size[] = new int[] { 0 };
 		
-		Files.list(dest.resolve("features")).forEach(feature -> {
+		Files.list(dest.resolve("features")).forEach(feature -> { //$NON-NLS-1$
 			try {
 				Document featureXml = getFeatureXml(feature);
 				Element rootElement = featureXml.getDocumentElement();
 				Properties props = getFeatureProperties(feature);
 				
-				String id = rootElement.getAttribute("id");
-				String version = rootElement.getAttribute("version");
-				String name = resolveWithProperties(rootElement.getAttribute("label"), props);
+				String id = rootElement.getAttribute("id"); //$NON-NLS-1$
+				String version = rootElement.getAttribute("version"); //$NON-NLS-1$
+				String name = resolveWithProperties(rootElement.getAttribute("label"), props); //$NON-NLS-1$
 				
-				String description = DOMUtil.evaluateXPath(doc, "/feature/description/text()").getStringValue();
+				String description = DOMUtil.evaluateXPath(doc, "/feature/description/text()").getStringValue(); //$NON-NLS-1$
 				description = resolveWithProperties(description, props);
-				String descriptionUrl = DOMUtil.evaluateXPath(doc, "/feature/description/@url").getStringValue();
+				String descriptionUrl = DOMUtil.evaluateXPath(doc, "/feature/description/@url").getStringValue(); //$NON-NLS-1$
 				descriptionUrl = resolveWithProperties(descriptionUrl, props);
 
-				String license = DOMUtil.evaluateXPath(doc, "/feature/license/text()").getStringValue();
+				String license = DOMUtil.evaluateXPath(doc, "/feature/license/text()").getStringValue(); //$NON-NLS-1$
 				license = resolveWithProperties(license, props);
-				String licenseUrl = DOMUtil.evaluateXPath(doc, "/feature/license/@url").getStringValue();
+				String licenseUrl = DOMUtil.evaluateXPath(doc, "/feature/license/@url").getStringValue(); //$NON-NLS-1$
 				licenseUrl = resolveWithProperties(licenseUrl, props);
 
-				String copyright = DOMUtil.evaluateXPath(doc, "/feature/copyright/text()").getStringValue();
+				String copyright = DOMUtil.evaluateXPath(doc, "/feature/copyright/text()").getStringValue(); //$NON-NLS-1$
 				copyright = resolveWithProperties(copyright, props);
-				String copyrightUrl = DOMUtil.evaluateXPath(doc, "/feature/copyright/@url").getStringValue();
+				String copyrightUrl = DOMUtil.evaluateXPath(doc, "/feature/copyright/@url").getStringValue(); //$NON-NLS-1$
 				copyrightUrl = resolveWithProperties(copyrightUrl, props);
 				
 				Element unit = DOMUtil.createElement(doc, units, "unit"); //$NON-NLS-1$
@@ -238,8 +238,8 @@ public class GenerateP2MetadataTask implements Runnable {
 				
 				{
 					Element update = DOMUtil.createElement(doc, unit, "update"); //$NON-NLS-1$
-					update.setAttribute("id", rootElement.getAttribute("id") + ".feature.group"); //$NON-NLS-1$ //$NON-NLS-2$
-					update.setAttribute("range", "[0.0.0," + rootElement.getAttribute("version") + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					update.setAttribute("id", rootElement.getAttribute("id") + ".feature.group"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					update.setAttribute("range", "[0.0.0," + rootElement.getAttribute("version") + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 					update.setAttribute("severity", "0"); //$NON-NLS-1$ //$NON-NLS-2$
 				}
 				
@@ -278,15 +278,15 @@ public class GenerateP2MetadataTask implements Runnable {
 					int requiresSize = 0;
 					Element requires = DOMUtil.createElement(doc, unit, "requires"); //$NON-NLS-1$
 					
-					Object[] plugins = DOMUtil.evaluateXPath(doc, "/feature/plugin").getNodes();
+					Object[] plugins = DOMUtil.evaluateXPath(doc, "/feature/plugin").getNodes(); //$NON-NLS-1$
 					
 					for(Object pluginObj : plugins) {
 						Element plugin = (Element)pluginObj;
 						
 						Element required = DOMUtil.createElement(doc, requires, "required"); //$NON-NLS-1$
 						required.setAttribute("namespace", "org.eclipse.equinox.p2.iu"); //$NON-NLS-1$ //$NON-NLS-2$
-						required.setAttribute("name", plugin.getAttribute("id")); //$NON-NLS-1$
-						required.setAttribute("range", "[" + plugin.getAttribute("version") + "," + plugin.getAttribute("version") + "]"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+						required.setAttribute("name", plugin.getAttribute("id")); //$NON-NLS-1$ //$NON-NLS-2$
+						required.setAttribute("range", "[" + plugin.getAttribute("version") + "," + plugin.getAttribute("version") + "]"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
 						
 						requiresSize++;
 					}
@@ -332,17 +332,17 @@ public class GenerateP2MetadataTask implements Runnable {
 				throw new RuntimeException(e);
 			}
 		});
-		Files.list(dest.resolve("plugins")).forEach(plugin -> {
+		Files.list(dest.resolve("plugins")).forEach(plugin -> { //$NON-NLS-1$
 			try {
 				Manifest manifest = getPluginManifest(plugin);
 				Properties props = getPluginProperties(plugin);
 				String id = getPluginId(manifest);
-				String version = manifest.getMainAttributes().getValue("Bundle-Version");
-				String name = manifest.getMainAttributes().getValue("Bundle-Name");
+				String version = manifest.getMainAttributes().getValue("Bundle-Version"); //$NON-NLS-1$
+				String name = manifest.getMainAttributes().getValue("Bundle-Name"); //$NON-NLS-1$
 				name = resolveWithProperties(name, props);
-				String provider = manifest.getMainAttributes().getValue("Bundle-Vendor");
+				String provider = manifest.getMainAttributes().getValue("Bundle-Vendor"); //$NON-NLS-1$
 				provider = resolveWithProperties(provider, props);
-				boolean fragment = StringUtil.isNotEmpty(manifest.getMainAttributes().getValue("Fragment-Host"));
+				boolean fragment = StringUtil.isNotEmpty(manifest.getMainAttributes().getValue("Fragment-Host")); //$NON-NLS-1$
 				
 				Element unit = DOMUtil.createElement(doc, units, "unit"); //$NON-NLS-1$
 				unit.setAttribute("id", id); //$NON-NLS-1$
@@ -350,7 +350,7 @@ public class GenerateP2MetadataTask implements Runnable {
 				
 				{
 					Element update = DOMUtil.createElement(doc, unit, "update"); //$NON-NLS-1$
-					update.setAttribute("id", id); //$NON-NLS-1$ //$NON-NLS-2$
+					update.setAttribute("id", id); //$NON-NLS-1$
 					update.setAttribute("range", "[0.0.0," + version + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 					update.setAttribute("severity", "0"); //$NON-NLS-1$ //$NON-NLS-2$
 				}
@@ -387,46 +387,46 @@ public class GenerateP2MetadataTask implements Runnable {
 					providedType.setAttribute("name", "bundle"); //$NON-NLS-1$ //$NON-NLS-2$
 					providedType.setAttribute("version", "1.0.0"); //$NON-NLS-1$ //$NON-NLS-2$
 					
-					String exportPackage = manifest.getMainAttributes().getValue("Export-Package");
+					String exportPackage = manifest.getMainAttributes().getValue("Export-Package"); //$NON-NLS-1$
 					if(StringUtil.isNotEmpty(exportPackage)) {
-						ManifestElement[] elements = ManifestElement.parseHeader("Export-Package", exportPackage);
+						ManifestElement[] elements = ManifestElement.parseHeader("Export-Package", exportPackage); //$NON-NLS-1$
 						for(ManifestElement el : elements) {
 							providedSize[0]++;
 							
-							String packageVersion = el.getAttribute("version");
+							String packageVersion = el.getAttribute("version"); //$NON-NLS-1$
 							if(StringUtil.isEmpty(packageVersion)) {
-								packageVersion = "0.0.0";
+								packageVersion = "0.0.0"; //$NON-NLS-1$
 							}
-							Element exportElement = DOMUtil.createElement(doc, provides, "provided");
-							exportElement.setAttribute("namespace", "java.package");
-							exportElement.setAttribute("name", el.getValue());
-							exportElement.setAttribute("version", packageVersion);
+							Element exportElement = DOMUtil.createElement(doc, provides, "provided"); //$NON-NLS-1$
+							exportElement.setAttribute("namespace", "java.package"); //$NON-NLS-1$ //$NON-NLS-2$
+							exportElement.setAttribute("name", el.getValue()); //$NON-NLS-1$
+							exportElement.setAttribute("version", packageVersion); //$NON-NLS-1$
 						}
 					}
 					
 					
 					if(fragment) {
 						providedSize[0]++;
-						String hostHeader = manifest.getMainAttributes().getValue("Fragment-Host");
+						String hostHeader = manifest.getMainAttributes().getValue("Fragment-Host"); //$NON-NLS-1$
 						String[] parts = StringUtil.splitString(hostHeader, ';');
 						String host = parts[0];
 						String hostVersion = Stream.of(parts)
-								.filter(p -> p.startsWith("bundle-version="))
+								.filter(p -> p.startsWith("bundle-version=")) //$NON-NLS-1$
 								.findFirst()
-								.map(p -> p.substring("bundle-version=".length()+1))
-								.orElse("");
+								.map(p -> p.substring("bundle-version=".length()+1)) //$NON-NLS-1$
+								.orElse(""); //$NON-NLS-1$
 						if(StringUtil.isNotEmpty(hostVersion)) {
-							if(hostVersion.startsWith("\"")) {
+							if(hostVersion.startsWith("\"")) { //$NON-NLS-1$
 								hostVersion = hostVersion.substring(1, hostVersion.length()-1);
 							}
 						} else {
-							Optional<String> hostPlugin = Files.list(dest.resolve("plugins"))
+							Optional<String> hostPlugin = Files.list(dest.resolve("plugins")) //$NON-NLS-1$
 									.map(Path::getFileName)
 									.map(Path::toString)
 									.filter(p -> p.startsWith(host))
 									.findFirst();
 							if(hostPlugin.isPresent()) {
-								hostVersion = hostPlugin.get().substring(host.length()+1, hostPlugin.get().length()-".jar".length());
+								hostVersion = hostPlugin.get().substring(host.length()+1, hostPlugin.get().length()-".jar".length()); //$NON-NLS-1$
 							} else {
 								hostVersion = "0.0.0"; //$NON-NLS-1$
 							}
@@ -444,41 +444,41 @@ public class GenerateP2MetadataTask implements Runnable {
 					Element requires = DOMUtil.createElement(doc, unit, "requires"); //$NON-NLS-1$
 					int[] requiresCount = new int[] { 0 };
 					
-					String requireBundle = manifest.getMainAttributes().getValue("Require-Bundle");
+					String requireBundle = manifest.getMainAttributes().getValue("Require-Bundle"); //$NON-NLS-1$
 					if(StringUtil.isNotEmpty(requireBundle)) {
-						ManifestElement[] elements = ManifestElement.parseHeader("Require-Bundle", requireBundle);
+						ManifestElement[] elements = ManifestElement.parseHeader("Require-Bundle", requireBundle); //$NON-NLS-1$
 						for(ManifestElement el : elements) {
 							Element required = DOMUtil.createElement(doc, requires, "required"); //$NON-NLS-1$
 							required.setAttribute("namespace", "osgi.bundle"); //$NON-NLS-1$ //$NON-NLS-2$
 							
-							String requireVersion = el.getAttribute("bundle-version");
+							String requireVersion = el.getAttribute("bundle-version"); //$NON-NLS-1$
 							if(StringUtil.isEmpty(requireVersion)) {
-								requireVersion = "0.0.0";
+								requireVersion = "0.0.0"; //$NON-NLS-1$
 							}
-							boolean optional = "optional".equals(el.getDirective("resolution"));
+							boolean optional = "optional".equals(el.getDirective("resolution")); //$NON-NLS-1$ //$NON-NLS-2$
 							
 							required.setAttribute("name", el.getValue()); //$NON-NLS-1$
 							required.setAttribute("range", requireVersion); //$NON-NLS-1$
-							required.setAttribute("optional", Boolean.toString(optional));
+							required.setAttribute("optional", Boolean.toString(optional)); //$NON-NLS-1$
 						}
 					}
 					
-					String importPackages = manifest.getMainAttributes().getValue("Import-Package");
+					String importPackages = manifest.getMainAttributes().getValue("Import-Package"); //$NON-NLS-1$
 					if(StringUtil.isNotEmpty(importPackages)) {
-						ManifestElement[] elements = ManifestElement.parseHeader("Import-Package", importPackages);
+						ManifestElement[] elements = ManifestElement.parseHeader("Import-Package", importPackages); //$NON-NLS-1$
 						for(ManifestElement el : elements) {
 							Element required = DOMUtil.createElement(doc, requires, "required"); //$NON-NLS-1$
 							required.setAttribute("namespace", "java.package"); //$NON-NLS-1$ //$NON-NLS-2$
 							
-							String requireVersion = el.getAttribute("version");
+							String requireVersion = el.getAttribute("version"); //$NON-NLS-1$
 							if(StringUtil.isEmpty(requireVersion)) {
-								requireVersion = "0.0.0";
+								requireVersion = "0.0.0"; //$NON-NLS-1$
 							}
-							boolean optional = "optional".equals(el.getDirective("resolution"));
+							boolean optional = "optional".equals(el.getDirective("resolution")); //$NON-NLS-1$ //$NON-NLS-2$
 							
 							required.setAttribute("name", el.getValue()); //$NON-NLS-1$
 							required.setAttribute("range", requireVersion); //$NON-NLS-1$
-							required.setAttribute("optional", Boolean.toString(optional));
+							required.setAttribute("optional", Boolean.toString(optional)); //$NON-NLS-1$
 						}
 					}
 					
@@ -515,7 +515,7 @@ public class GenerateP2MetadataTask implements Runnable {
 					instManifest.setAttribute("key", "manifest"); //$NON-NLS-1$ //$NON-NLS-2$
 					// TODO trim this down?
 					try(JarFile jar = new JarFile(plugin.toFile())) {
-						ZipEntry manifestEntry = jar.getEntry("META-INF/MANIFEST.MF");
+						ZipEntry manifestEntry = jar.getEntry("META-INF/MANIFEST.MF"); //$NON-NLS-1$
 						try(InputStream is = jar.getInputStream(manifestEntry)) {
 							instManifest.setTextContent(StreamUtil.readString(is));
 						}
@@ -535,7 +535,7 @@ public class GenerateP2MetadataTask implements Runnable {
 	private Document getFeatureXml(Path feature) {
 		try {
 			try(JarFile featureJar = new JarFile(feature.toFile())) {
-				ZipEntry xmlEntry = featureJar.getEntry("feature.xml");
+				ZipEntry xmlEntry = featureJar.getEntry("feature.xml"); //$NON-NLS-1$
 				try(InputStream is = featureJar.getInputStream(xmlEntry)) {
 					return DOMUtil.createDocument(is);
 				}
@@ -548,7 +548,7 @@ public class GenerateP2MetadataTask implements Runnable {
 	private Properties getFeatureProperties(Path feature) {
 		try {
 			try(JarFile jar = new JarFile(feature.toFile())) {
-				ZipEntry entry = jar.getEntry("feature.properties");
+				ZipEntry entry = jar.getEntry("feature.properties"); //$NON-NLS-1$
 				if(entry == null) {
 					return new Properties();
 				}
@@ -576,9 +576,9 @@ public class GenerateP2MetadataTask implements Runnable {
 	private Properties getPluginProperties(Path plugin) {
 		try {
 			try(JarFile jar = new JarFile(plugin.toFile())) {
-				ZipEntry entry = jar.getEntry("plugin.properties");
+				ZipEntry entry = jar.getEntry("plugin.properties"); //$NON-NLS-1$
 				if(entry == null) {
-					entry = jar.getEntry("fragment.properties");
+					entry = jar.getEntry("fragment.properties"); //$NON-NLS-1$
 				}
 				if(entry == null) {
 					return new Properties();
@@ -599,13 +599,13 @@ public class GenerateP2MetadataTask implements Runnable {
 		for(Map.Entry<Object, Object> prop : properties.entrySet()) {
 			String key = StringUtil.toString(prop.getKey());
 			String val = StringUtil.toString(prop.getValue());
-			v = v.replace("%" + key, val);
+			v = v.replace("%" + key, val); //$NON-NLS-1$
 		}
 		return v;
 	}
 	
 	private String getPluginId(Manifest manifest) {
-		String symbolicName = manifest.getMainAttributes().getValue("Bundle-SymbolicName");
+		String symbolicName = manifest.getMainAttributes().getValue("Bundle-SymbolicName"); //$NON-NLS-1$
 		int semiIndex = symbolicName.indexOf(';');
 		if(semiIndex > -1) {
 			symbolicName = symbolicName.substring(0, semiIndex);

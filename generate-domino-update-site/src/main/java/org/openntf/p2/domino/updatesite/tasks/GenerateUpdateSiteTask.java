@@ -80,11 +80,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
 			
 			for(Path eclipse : eclipsePaths) {
-				Path features = eclipse.resolve("features");
+				Path features = eclipse.resolve("features"); //$NON-NLS-1$
 				if(Files.isDirectory(features)) {
 					copyArtifacts(features, destFeatures);
 				}
-				Path plugins = eclipse.resolve("plugins");
+				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
 				if(Files.isDirectory(plugins)) {
 					copyArtifacts(plugins, destPlugins);
 				}
@@ -119,7 +119,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 										.map(path -> path.toString().replace('/', '.'))
 										.distinct()
 										.filter(Objects::nonNull)
-										.filter(name -> !"META-INF".equals(name))
+										.filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
@@ -234,13 +234,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 	
 	private String readNotesVersion(Path notesJar) throws IOException {
 		try(JarFile jarFile = new JarFile(notesJar.toFile())) {
-			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties");
+			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties"); //$NON-NLS-1$
 			try(InputStream is = jarFile.getInputStream(versionProps)) {
 				Properties props = new Properties();
 				props.load(is);
-				String notesVersion = props.getProperty("NotesVersion", "");
-				if(notesVersion.startsWith("Release ")) {
-					return notesVersion.substring("Release ".length());
+				String notesVersion = props.getProperty("NotesVersion", ""); //$NON-NLS-1$ //$NON-NLS-2$
+				if(notesVersion.startsWith("Release ")) { //$NON-NLS-1$
+					return notesVersion.substring("Release ".length()); //$NON-NLS-1$
 				} else {
 					// Beta builds have special formatting
 					Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
@@ -322,17 +322,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 		// Account for various layouts
 		List<Path> eclipsePaths = Stream.of(
 				// macOS Notes client
-				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"),
-				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"),
+				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				// macOS Notes client pointed at Contents/MacOS
-				domino.resolve("shared").resolve("eclipse"),
-				domino.resolve("rcp").resolve("eclipse"),
+				domino.resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
+				domino.resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
 				// Domino and Windows Notes
-				domino.resolve("osgi").resolve("shared").resolve("eclipse"),
-				domino.resolve("osgi").resolve("rcp").resolve("eclipse"),
+				domino.resolve("osgi").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.resolve("osgi").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				// Windows Notes
-				domino.resolve("framework").resolve("shared").resolve("eclipse"),
-				domino.resolve("framework").resolve("rcp").resolve("eclipse")
+				domino.resolve("framework").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.resolve("framework").resolve("rcp").resolve("eclipse") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			)
 			.filter(path -> Files.exists(path))
 			.collect(Collectors.toList());
@@ -348,9 +348,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private Path findNotesJar(Path domino) {
 		return Stream.of(
 			// macOS Notes client
-			domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar"),
+			domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
 			// All Notes and Domino, including macOS Notes client pointed at Contents/MacOS
-			domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar")
+			domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 		)
 		.filter(Files::exists)
 		.filter(Files::isRegularFile)
