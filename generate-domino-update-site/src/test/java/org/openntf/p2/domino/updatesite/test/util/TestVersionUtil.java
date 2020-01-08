@@ -36,4 +36,19 @@ public class TestVersionUtil {
 	public void testV11BetaSomething() {
 		assertEquals("11.0.0.20190830", VersionUtil.generateNotesJarVersion("Build V1100_08302019", "August 30, 2019"));
 	}
+	
+	@Test
+	public void testV901FP8() {
+		assertEquals("9.0.1008.20170223", VersionUtil.generateNotesJarVersion("Release 9.0.1FP8", "February 23, 2017"));
+	}
+	
+	@Test
+	public void testV901FP10() {
+		assertEquals("9.0.1010.20180115", VersionUtil.generateNotesJarVersion("Release 9.0.1FP10", "January 15, 2018"));
+	}
+	
+	@Test
+	public void testHypotheticalV10FP1() {
+		assertEquals("10.0.0001.20180115", VersionUtil.generateNotesJarVersion("Release 10.0FP1", "January 15, 2018"));
+	}
 }
