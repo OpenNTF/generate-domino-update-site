@@ -24,17 +24,41 @@ The tool performs several tasks to generate its result:
 
 ### Command Line Use
 
+Add the OpenNTF Maven server to your ~/.m2/settings.xml file. For example:
+
+```xml
+<?xml version="1.0"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+    <profiles>
+        <profile>
+            <id>openntf</id>
+            
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>artifactory.openntf.org</id>
+                    <name>artifactory.openntf.org</name>
+                    <url>https://artifactory.openntf.org/openntf</url>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
+    <activeProfiles>
+        <activeProfile>openntf</activeProfile>
+    </activeProfiles>
+</settings>
+```
+
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ cd generate-domino-update-site
-$ mvn install
 $ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
-	-Dsrc="/Volumes/C/Program Files/IBM/Domino" \
-	-Ddest="/Users/someuser/Desktop/UpdateSite"
+    -Dsrc="/Volumes/C/Program Files/IBM/Domino" \
+    -Ddest="/Users/someuser/Desktop/UpdateSite"
 ```
 - `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino". If unspecified, the Mojo will attempt to find a Domino or Notes installation based on common locations
-- `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite"
+- `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite", but it can be anywhere
 
 ### Programmatic Use
 
@@ -59,13 +83,13 @@ This tool processes a p2 site (or a bundles directory directly) and installs the
 Additionally, this installs any embedded JARs as attached entities with the `classifier` matching their base name. For example, Notes.jar from the 9.0.1 release can be accessed like:
 
 ```xml
-		<dependency>
-			<groupId>com.ibm.xsp</groupId>
-			<artifactId>com.ibm.notes.java.api.win32.linux</artifactId>
-			<version>9.0.1.20140404-1000</version>
-			<classifier>Notes</classifier>
-			<scope>provided</scope>
-		</dependency>
+<dependency>
+  <groupId>com.ibm.xsp</groupId>
+  <artifactId>com.ibm.notes.java.api.win32.linux</artifactId>
+  <version>[9.0.1,)</version>
+  <classifier>Notes</classifier>
+  <scope>provided</scope>
+</dependency>
 ```
 
 ### Command Line Use
@@ -74,8 +98,8 @@ Execute the plugin with properties to point to the base of your Domino installat
 
 ```sh
 $ mvn org.openntf.p2:generate-domino-update-site:mavenizeBundles \
-	-Dsrc="/Users/someuser/Desktop/UpdateSite" \
-	-DgroupId=some.group.id # Optional
+    -Dsrc="/Users/someuser/Desktop/UpdateSite" \
+    -DgroupId=some.group.id # Optional
 ```
 
 - `src` is the location of the Update Site
