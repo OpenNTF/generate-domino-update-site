@@ -37,6 +37,7 @@ public enum VersionUtil {
 	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)"); //$NON-NLS-1$
 	private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd"); //$NON-NLS-1$
 	private static final DateTimeFormatter NOTESVERSIONDATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US); // U-S-A! U-S-A! //$NON-NLS-1$
+	private static final Pattern RELEASE_PATTERN = Pattern.compile("Release (\\d+\\.\\d+(\\.\\d+)?)(FP(\\d+))?"); //$NON-NLS-1$
 	
 	/**
 	 * Generates an OSGi-friendly version number based on the {@code NotesVersion} and
@@ -49,11 +50,18 @@ public enum VersionUtil {
 	 */
 	public static String generateNotesJarVersion(String notesVersion, String notesVersionDate) {
 		StringBuilder result = new StringBuilder();
-		if(notesVersion.startsWith("Release ")) { //$NON-NLS-1$
-			result.append(notesVersion.substring("Release ".length())); //$NON-NLS-1$
+		Matcher releaseMatcher = RELEASE_PATTERN.matcher(notesVersion);
+		if(releaseMatcher.matches()) {
+			String v = releaseMatcher.group(1);
+			result.append(v);
 			// Append a .0 if needed
 			if(StringUtil.countMatch(result.toString(), '.') < 2) {
 				result.append(".0"); //$NON-NLS-1$
+			}
+			
+			String fp = releaseMatcher.group(4);
+			if(StringUtil.isNotEmpty(fp)) {
+				result.append(String.format("%03d", Integer.parseInt(fp, 10))); //$NON-NLS-1$
 			}
 		} else {
 			// Beta builds have special formatting

@@ -85,9 +85,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 				}
 			}
 
+			String baseVersion = readNotesVersion(notesJar);
+			String version = baseVersion + "-1500"; //$NON-NLS-1$
 			{
-				String baseVersion = readNotesVersion(notesJar);
-				String version = baseVersion + "-1500"; //$NON-NLS-1$
 				String bundleId = "com.ibm.notes.java.api"; //$NON-NLS-1$
 				// Create the Notes API plugin for the true version, since the shipping plugin one is often out of step
 				if(Files.list(destPlugins).noneMatch(p -> p.getFileName().toString().startsWith(bundleId + '_' + baseVersion))) {
@@ -150,6 +150,52 @@ public class GenerateUpdateSiteTask implements Runnable {
 							jos.closeEntry();
 						}
 					}
+				}
+			}
+			
+			// Create an XSP HTTP Bootstrap bundle, if possible
+			{
+				Path xspBootstrap = findXspBootstrap(domino);
+				if(Files.isRegularFile(xspBootstrap)) {
+					String bundleId = "com.ibm.xsp.http.bootstrap"; //$NON-NLS-1$
+					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+						try (JarOutputStream jos = new JarOutputStream(fos)) {
+							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
+							Manifest manifest = new Manifest();
+							Attributes attrs = manifest.getMainAttributes();
+							attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-ClassPath", "xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-Name", "XSP HTTP Bootstrap"); //$NON-NLS-1$ //$NON-NLS-2$
+							attrs.putValue("Bundle-SymbolicName", bundleId); //$NON-NLS-1$
+							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
+							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+							
+							// Find the packages to export
+							try (JarFile notesJarFile = new JarFile(xspBootstrap.toFile())) {
+								String exports = notesJarFile.stream()
+										.filter(jarEntry -> StringUtil.toString(jarEntry.getName()).endsWith(".class")) //$NON-NLS-1$
+										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
+										.filter(Objects::nonNull)
+										.map(path -> path.toString().replace('/', '.'))
+										.distinct()
+										.filter(Objects::nonNull)
+										.filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
+										.collect(Collectors.joining(",")); //$NON-NLS-1$
+								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
+							}
+							
+							manifest.write(jos);
+							jos.closeEntry();
+
+							jos.putNextEntry(new ZipEntry("xsp.http.bootstrap.jar")); //$NON-NLS-1$
+							Files.copy(xspBootstrap, jos);
+							jos.closeEntry();
+						}
+					}
+				} else {
+					System.out.println("Unable to locate xsp.http.bootstrap.jar - skipping bundle creation");
 				}
 			}
 
@@ -355,5 +401,15 @@ public class GenerateUpdateSiteTask implements Runnable {
 		.filter(Files::isRegularFile)
 		.findFirst()
 		.orElseThrow(() -> new IllegalArgumentException("Unable to locate Notes.jar within " + domino));
+	}
+	
+	/**
+	 * 
+	 * @return a {@link Path} to xsp.http.bootstrap.jar, which may not exist
+	 * @since 3.2.0
+	 */
+	private Path findXspBootstrap(Path domino) {
+		// This only exists on servers and the Windows client for now, so no need to look through special Mac paths
+		return domino.resolve("jvm").resolve("lib").resolve("ext").resolve("xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 	}
 }
