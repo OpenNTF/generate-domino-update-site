@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2019 Jesse Gallagher
+ * Copyright © 2018-2020 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,15 +45,24 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
+import org.tukaani.xz.XZInputStream;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
 import com.ibm.commons.xml.DOMUtil;
 import com.ibm.commons.xml.XMLException;
+import com.ibm.commons.xml.XResult;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
+	private static final Pattern BUNDLE_FILENAME_PATTERN = FEATURE_FILENAME_PATTERN;
+	
+	/**
+	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 to current (11.0.1).
+	 */
+	public static final String NEON_UPDATE_SITE = "https://download.eclipse.org/releases/neon/201612211000"; //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
@@ -70,6 +81,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 		Path notesJar = findNotesJar(domino);
 
 		try {
+			Document eclipseArtifacts = fetchEclipseArtifacts();
+			
 			Path dest = mkDir(destDir);
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
 			Path destPlugins = mkDir(dest.resolve("plugins")); //$NON-NLS-1$
@@ -77,11 +90,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 			for(Path eclipse : eclipsePaths) {
 				Path features = eclipse.resolve("features"); //$NON-NLS-1$
 				if(Files.isDirectory(features)) {
-					copyArtifacts(features, destFeatures);
+					copyArtifacts(features, destFeatures, null);
 				}
 				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
 				if(Files.isDirectory(plugins)) {
-					copyArtifacts(plugins, destPlugins);
+					copyArtifacts(plugins, destPlugins, eclipseArtifacts);
 				}
 			}
 
@@ -228,11 +241,15 @@ public class GenerateUpdateSiteTask implements Runnable {
 		return dir;
 	}
 
-	private void copyArtifacts(Path sourceDir, Path destDir) throws Exception {
+	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {
 		Files.list(sourceDir).forEach(artifact -> {
 			System.out.println("Copying " + artifact.getFileName().toString());
 			try {
-				copyOrPack(artifact, destDir);
+				Path destJar = copyOrPack(artifact, destDir);
+				
+				if(eclipseArtifacts != null) {
+					downloadSource(destJar, destDir, eclipseArtifacts);
+				}
 
 				if (Thread.currentThread().isInterrupted()) {
 					return;
@@ -243,27 +260,30 @@ public class GenerateUpdateSiteTask implements Runnable {
 		});
 	}
 
-	private void copyOrPack(Path source, Path destDir) throws Exception {
+	private Path copyOrPack(Path source, Path destDir) throws Exception {
 		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
 			// Check for a MANIFEST.MF inside the Jar
 			try(JarFile jarFile = new JarFile(source.toFile())) {
 				if(jarFile.getEntry("META-INF/MANIFEST.MF") == null) { //$NON-NLS-1$
-					return;
+					return null;
 				}
 			}
 			
 			Path dest = destDir.resolve(source.getFileName());
 			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+			return dest;
 		} else if (Files.isDirectory(source)) {
 			// Check for a MANIFEST.MF in a subdirectory
 			if(!Files.isRegularFile(source.resolve("META-INF").resolve("MANIFEST.MF"))) { //$NON-NLS-1$ //$NON-NLS-2$
-				return;
+				return null;
 			}
 			
 			// Must be an unpacked plugin
 			Path destPlugin = destDir.resolve(source.getFileName() + ".jar"); //$NON-NLS-1$
 			zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath());
+			return destPlugin;
 		}
+		return null;
 	}
 
 	private void zipFolder(Path sourceFolderPath, Path zipPath) throws Exception {
@@ -411,5 +431,61 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private Path findXspBootstrap(Path domino) {
 		// This only exists on servers and the Windows client for now, so no need to look through special Mac paths
 		return domino.resolve("jvm").resolve("lib").resolve("ext").resolve("xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+	}
+
+	/**
+	 * @throws XMLException 
+	 * @throws MalformedURLException 
+	 * Retrieves the contents of the artifacts.jar file for the current matching Eclipse update
+	 * site as a {@link Document}.
+	 * 
+	 * @since 3.3.0
+	 */
+	private Document fetchEclipseArtifacts() throws MalformedURLException, XMLException {
+		String urlString = PathUtil.concat(NEON_UPDATE_SITE, "artifacts.xml.xz", '/'); //$NON-NLS-1$
+		URL artifactsUrl = new URL(urlString);
+		try(InputStream is = artifactsUrl.openStream()) {
+			try(XZInputStream zis = new XZInputStream(is)) {
+				return DOMUtil.createDocument(zis);
+			}
+		} catch (IOException e) {
+			System.err.println("Unable to load Neon artifacts.xml.xz");
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	/**
+	 * Looks for a source bundle matching the given artifact on the Neon update site.
+	 * 
+	 * @since 3.3.0
+	 */
+	private void downloadSource(Path artifact, Path destDir, Document artifacts) throws Exception {
+		String fileName = artifact.getFileName().toString();
+		Matcher matcher = BUNDLE_FILENAME_PATTERN.matcher(fileName);
+		if(matcher.matches()) {
+			String symbolicName = matcher.group(1) + ".source"; //$NON-NLS-1$
+			String version = matcher.group(2);
+			
+			String query = StringUtil.format("/repository/artifacts/artifact[@classifier='osgi.bundle'][@id='{0}'][@version='{1}']", symbolicName, version); //$NON-NLS-1$
+			XResult result = DOMUtil.evaluateXPath(artifacts, query);
+			Object[] artifactNodes = result.getNodes();
+			if(artifactNodes != null && artifactNodes.length > 0) {
+				// Then we can be confident that it will exist at the expected URL
+				String bundleName = StringUtil.format("{0}_{1}.jar", symbolicName, version); //$NON-NLS-1$
+				Path dest = destDir.resolve(bundleName);
+				
+				String urlString = PathUtil.concat(NEON_UPDATE_SITE, "plugins", '/'); //$NON-NLS-1$
+				urlString = PathUtil.concat(urlString, bundleName, '/');
+				URL bundleUrl = new URL(urlString);
+				try(InputStream is = bundleUrl.openStream()) {
+					System.out.println("- Downloading source bundle " + artifact.getFileName().toString());
+					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
+				} catch(IOException e) {
+					System.err.println("Unable to download source bundle " + urlString);
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 }
