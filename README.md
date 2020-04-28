@@ -19,8 +19,10 @@ The tool performs several tasks to generate its result:
 1. Copies the features and plugins from the  `osgi/rcp/eclipe` and `osgi/shared/eclipse`  directories, converting unpacked folder artifacts back into Jar files
 2. If pointed to a Windows Notes installation directory, it will do the same with the `framework` directory, which contains UI-specific plugins
 3. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date, if needed
-4. Creates a basic site.xml file
-5. Generates artifacts.jar and content.jar files
+4. Generates a `com.ibm.xsp.http.bootstrap` bundle in similar fashion, when the JAR is available in the source
+5. Downloads source bundles for open-source components found in Eclipse's Neon repository
+6. Creates a basic site.xml file
+7. Generates artifacts.jar and content.jar files
 
 ### Command Line Use
 
