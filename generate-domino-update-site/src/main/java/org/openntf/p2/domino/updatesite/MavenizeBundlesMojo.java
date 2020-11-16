@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.MessageFormat;
@@ -302,12 +303,14 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 						JarEntry embedEntry = jarFile.getJarEntry(cpEntry);
 						if(embedEntry != null) {
 							try(InputStream embedIs = jarFile.getInputStream(embedEntry)) {
-								File embedName = new File(cpEntry);
-								Path embedFile = Files.createTempFile(embedName.getName(), ".jar"); //$NON-NLS-1$
+								Path embedPath = Paths.get(cpEntry);
+								String embedName = embedPath.getFileName().toString().replace('/', '$');
+								
+								Path embedFile = Files.createTempFile(embedName, ".jar"); //$NON-NLS-1$
 								embedFile.toFile().deleteOnExit();
 								Files.copy(embedIs, embedFile, StandardCopyOption.REPLACE_EXISTING);
 								
-								embeds.add(new BundleEmbed(embedName.getName(), embedFile));
+								embeds.add(new BundleEmbed(embedName, embedFile));
 							}
 						}
 					}
