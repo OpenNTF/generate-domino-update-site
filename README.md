@@ -68,9 +68,9 @@ To incorporate the tool into another program, create a new object of class `org.
 
 ## `mavenizeBundles` Mojo
 
-### Deprecation
+### p2-layout-resolver
 
-Though this Mojo still exists in this plugin, it is deprecated in favor of the [`p2-layout-resolver` plugin](https://github.com/OpenNTF/p2-layout-provider).
+Though this Mojo still exists in this plugin, you should consider using the [`p2-layout-resolver` plugin](https://github.com/OpenNTF/p2-layout-provider) instead.
 
 ### What It Does
 

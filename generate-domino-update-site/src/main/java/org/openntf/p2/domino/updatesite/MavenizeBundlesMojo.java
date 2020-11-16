@@ -70,9 +70,8 @@ import static org.twdata.maven.mojoexecutor.MojoExecutor.*;
  * 
  * @author Jesse Gallagher
  * @since 3.0.0
- * @deprecated Use <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
+ * @see Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
  */
-@Deprecated
 @Mojo(name="mavenizeBundles", requiresProject=false)
 public class MavenizeBundlesMojo extends AbstractMojo {
 	
@@ -107,16 +106,16 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 		
 		try {
 			Path bundlesDir = src.toPath();
-			if(Files.exists(bundlesDir.resolve("plugins"))) {
-				bundlesDir = bundlesDir.resolve("plugins");
+			if(Files.exists(bundlesDir.resolve("plugins"))) { //$NON-NLS-1$
+				bundlesDir = bundlesDir.resolve("plugins"); //$NON-NLS-1$
 			}
 			
-			try(InputStream is = getClass().getResourceAsStream("/basePom.xml")) {
+			try(InputStream is = getClass().getResourceAsStream("/basePom.xml")) { //$NON-NLS-1$
 				basePom = StreamUtil.readString(is);
 			}
 			
 			Files.list(bundlesDir)
-				.filter(path -> path.toString().toLowerCase().endsWith(".jar"))
+				.filter(path -> path.toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
 				.map(this::toInfo)
 				.filter(Objects::nonNull)
 				.forEach(b -> {
@@ -137,18 +136,18 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			
 			executeMojo(
 				plugin(
-					groupId("org.apache.maven.plugins"),
-					artifactId("maven-install-plugin"),
-					version("2.5.2")
+					groupId("org.apache.maven.plugins"), //$NON-NLS-1$
+					artifactId("maven-install-plugin"), //$NON-NLS-1$
+					version("2.5.2") //$NON-NLS-1$
 				),
-				goal("install-file"),
+				goal("install-file"), //$NON-NLS-1$
 				configuration(
-					element("file", bundle.filePath),
-					element("groupId", groupId),
-					element("artifactId", bundle.artifactId),
-					element("version", bundle.version),
-					element("packaging", "jar"),
-					element("pomFile", tempPom.toString())
+					element("file", bundle.filePath), //$NON-NLS-1$
+					element("groupId", groupId), //$NON-NLS-1$
+					element("artifactId", bundle.artifactId), //$NON-NLS-1$
+					element("version", bundle.version), //$NON-NLS-1$
+					element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
+					element("pomFile", tempPom.toString()) //$NON-NLS-1$
 				),
 				executionEnvironment(
 					mavenProject,
@@ -163,18 +162,18 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				
 				executeMojo(
 					plugin(
-						groupId("org.apache.maven.plugins"),
-						artifactId("maven-install-plugin"),
-						version("2.5.2")
+						groupId("org.apache.maven.plugins"), //$NON-NLS-1$
+						artifactId("maven-install-plugin"), //$NON-NLS-1$
+						version("2.5.2") //$NON-NLS-1$
 					),
-					goal("install-file"),
+					goal("install-file"), //$NON-NLS-1$
 					configuration(
-						element("file", embed.file.toString()),
-						element("groupId", groupId),
-						element("artifactId", bundle.artifactId),
-						element("version", bundle.version),
-						element("packaging", "jar"),
-						element("classifier", baseName)
+						element("file", embed.file.toString()), //$NON-NLS-1$
+						element("groupId", groupId), //$NON-NLS-1$
+						element("artifactId", bundle.artifactId), //$NON-NLS-1$
+						element("version", bundle.version), //$NON-NLS-1$
+						element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
+						element("classifier", baseName) //$NON-NLS-1$
 					),
 					executionEnvironment(
 						mavenProject,
@@ -219,7 +218,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 					Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
 					depVersion.setTextContent(dep.version);
 					if(optionalDependencies) {
-						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true");
+						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true"); //$NON-NLS-1$ //$NON-NLS-2$
 					}
 				}
 			}
@@ -258,12 +257,12 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			}
 			
 			// Determine the appropriate Maven metadata
-			String artifactId = manifest.getMainAttributes().getValue("Bundle-SymbolicName");
+			String artifactId = manifest.getMainAttributes().getValue("Bundle-SymbolicName"); //$NON-NLS-1$
 			if(StringUtil.isEmpty(artifactId)) {
 				// Account for anomalous V11 JARs
 				return null;
 			}
-			artifactId = StringUtil.trim(artifactId.replaceAll(";.*", "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			artifactId = StringUtil.trim(artifactId.replaceAll(";.*", "")); //$NON-NLS-1$ //$NON-NLS-2$
 			String version = manifest.getMainAttributes().getValue("Bundle-Version"); //$NON-NLS-1$
 			String name = manifest.getMainAttributes().getValue("Bundle-Name"); //$NON-NLS-1$
 			if(name == null || name.isEmpty()) {
@@ -316,7 +315,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			}
 			
 			// Create a copy of the JAR in a temp location to tweak the requirements
-			Path tempFile = Files.createTempFile(path.getFileName().toString(), ".jar");
+			Path tempFile = Files.createTempFile(path.getFileName().toString(), ".jar"); //$NON-NLS-1$
 			tempFile.toFile().deleteOnExit();
 			try(OutputStream os = Files.newOutputStream(tempFile, StandardOpenOption.TRUNCATE_EXISTING)) {
 				try(ZipOutputStream zos = new ZipOutputStream(os)) {
@@ -325,36 +324,36 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 							ZipEntry entry = zis.getNextEntry();
 							while(entry != null) {
 								zos.putNextEntry(entry);
-								if("META-INF/MANIFEST.MF".equals(entry.getName())) {
+								if("META-INF/MANIFEST.MF".equals(entry.getName())) { //$NON-NLS-1$
 									Manifest tempManifest = new Manifest();
 									tempManifest.read(zis);
 									
 									// Replace the com.ibm.pvc.servlet hard requirement with just servlet imports
-									String requireBundle = tempManifest.getMainAttributes().getValue("Require-Bundle");
+									String requireBundle = tempManifest.getMainAttributes().getValue("Require-Bundle"); //$NON-NLS-1$
 									if(StringUtil.isNotEmpty(requireBundle)) {
-										ManifestElement[] elements = ManifestElement.parseHeader("Require-Bundle", requireBundle);
+										ManifestElement[] elements = ManifestElement.parseHeader("Require-Bundle", requireBundle); //$NON-NLS-1$
 										requireBundle = Stream.of(elements)
-											.filter(el -> !"com.ibm.pvc.servlet".equals(el.getValue()))
-											.map(el -> el.toString() + ("optional".equals(el.getDirective("resolution")) ? "" : ";resolution:=optional"))
-											.collect(Collectors.joining(","));
+											.filter(el -> !"com.ibm.pvc.servlet".equals(el.getValue())) //$NON-NLS-1$
+											.map(el -> el.toString() + ("optional".equals(el.getDirective("resolution")) ? "" : ";resolution:=optional")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+											.collect(Collectors.joining(",")); //$NON-NLS-1$
 										if(StringUtil.isEmpty(requireBundle)) {
-											tempManifest.getMainAttributes().remove(new java.util.jar.Attributes.Name("Require-Bundle"));
+											tempManifest.getMainAttributes().remove(new java.util.jar.Attributes.Name("Require-Bundle")); //$NON-NLS-1$
 										} else {
-											tempManifest.getMainAttributes().putValue("Require-Bundle", requireBundle);
+											tempManifest.getMainAttributes().putValue("Require-Bundle", requireBundle); //$NON-NLS-1$
 										}
 									}
 									
 									// Validate the bundle version
-									String versionString = tempManifest.getMainAttributes().getValue("Bundle-Version");
+									String versionString = tempManifest.getMainAttributes().getValue("Bundle-Version"); //$NON-NLS-1$
 									if(StringUtil.isNotEmpty(versionString)) {
 										try {
 											new Version(versionString);
 										} catch(IllegalArgumentException e) {
 											// This case should be that there are more than three "."s
-											String[] bits = versionString.split("\\.", 4);
+											String[] bits = versionString.split("\\.", 4); //$NON-NLS-1$
 											if(bits.length >= 4) {
-												versionString = bits[0] + "." + bits[1] + "." + bits[2] + "." + bits[3].replace(".", "_");
-												tempManifest.getMainAttributes().putValue("Bundle-Version", versionString);
+												versionString = bits[0] + "." + bits[1] + "." + bits[2] + "." + bits[3].replace(".", "_"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+												tempManifest.getMainAttributes().putValue("Bundle-Version", versionString); //$NON-NLS-1$
 											} else {
 												throw e;
 											}
@@ -365,15 +364,15 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 									//   as some XML things that these bundles assume are passively available, but which newer OSGi
 									//   containers may not automatically provide
 									List<String> imports = Arrays.asList(
-										"javax.servlet",
-										"javax.servlet.*",
-										"org.w3c.dom",
-										"org.w3c.dom.*",
-										"org.xml.*",
-										"javax.xml.*",
-										"lotus.*"
+										"javax.servlet", //$NON-NLS-1$
+										"javax.servlet.*", //$NON-NLS-1$
+										"org.w3c.dom", //$NON-NLS-1$
+										"org.w3c.dom.*", //$NON-NLS-1$
+										"org.xml.*", //$NON-NLS-1$
+										"javax.xml.*", //$NON-NLS-1$
+										"lotus.*" //$NON-NLS-1$
 									);
-									tempManifest.getMainAttributes().putValue("DynamicImport-Package", String.join(",", imports));
+									tempManifest.getMainAttributes().putValue("DynamicImport-Package", String.join(",", imports)); //$NON-NLS-1$ //$NON-NLS-2$
 									
 									tempManifest.write(zos);
 								} else {
@@ -385,14 +384,14 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 							}
 							
 							// Very special handling of com.ibm.notes.java.api to make it play nicer in other environments
-							if(path.getFileName().startsWith("com.ibm.notes.java.api_")) {
+							if(path.getFileName().startsWith("com.ibm.notes.java.api_")) { //$NON-NLS-1$
 								// Find the companion fragment
 								Optional<Path> maybeFragment = Files.find(path.getParent(), 0,
-										(p, attr) -> p.getFileName().startsWith("com.ibm.notes.java.api.win32.linux_")).findFirst();
+										(p, attr) -> p.getFileName().startsWith("com.ibm.notes.java.api.win32.linux_")).findFirst(); //$NON-NLS-1$
 								if(maybeFragment.isPresent()) {
 									ZipFile fragmentZip = new ZipFile(maybeFragment.get().toFile());
 									try {
-										ZipEntry notesJar = fragmentZip.getEntry("Notes.jar");
+										ZipEntry notesJar = fragmentZip.getEntry("Notes.jar"); //$NON-NLS-1$
 										if(notesJar != null) {
 											zos.putNextEntry(notesJar);
 											try(InputStream nis = fragmentZip.getInputStream(notesJar)) {
