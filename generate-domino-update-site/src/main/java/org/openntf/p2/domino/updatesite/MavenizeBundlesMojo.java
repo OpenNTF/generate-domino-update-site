@@ -54,6 +54,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.osgi.util.ManifestElement;
 import org.osgi.framework.Version;
+import org.twdata.maven.mojoexecutor.MojoExecutor;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -89,6 +90,14 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 	
 	@Parameter(property="optionalDependencies", required=false)
 	private boolean optionalDependencies = true;
+	
+	/**
+	 * Specifies an alternate local repository for the installation.
+	 * 
+	 * @since 3.4.0
+	 */
+	@Parameter(property="localRepositoryPath", required=false)
+	private File localRepositoryPath;
 	
 	@Component
 	private MavenProject mavenProject;
@@ -161,6 +170,17 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			for(BundleEmbed embed : bundle.embeds) {
 				String baseName = embed.name.substring(0, embed.name.lastIndexOf('.'));
 				
+				List<MojoExecutor.Element> elements = new ArrayList<>(Arrays.asList(
+					element("file", embed.file.toString()), //$NON-NLS-1$
+					element("groupId", groupId), //$NON-NLS-1$
+					element("artifactId", bundle.artifactId), //$NON-NLS-1$
+					element("version", bundle.version), //$NON-NLS-1$
+					element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
+					element("classifier", baseName) //$NON-NLS-1$
+				));
+				if(this.localRepositoryPath != null) {
+					element("localRepositoryPath", this.localRepositoryPath.toString()); //$NON-NLS-1$
+				}
 				executeMojo(
 					plugin(
 						groupId("org.apache.maven.plugins"), //$NON-NLS-1$
@@ -169,12 +189,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 					),
 					goal("install-file"), //$NON-NLS-1$
 					configuration(
-						element("file", embed.file.toString()), //$NON-NLS-1$
-						element("groupId", groupId), //$NON-NLS-1$
-						element("artifactId", bundle.artifactId), //$NON-NLS-1$
-						element("version", bundle.version), //$NON-NLS-1$
-						element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
-						element("classifier", baseName) //$NON-NLS-1$
+						elements.toArray(new MojoExecutor.Element[elements.size()])
 					),
 					executionEnvironment(
 						mavenProject,
