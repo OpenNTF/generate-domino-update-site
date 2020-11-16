@@ -205,9 +205,11 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			Element name = DOMUtil.createElement(xml, organization, "name"); //$NON-NLS-1$
 			name.setTextContent(bundle.vendor);
 		}
+
+		Element dependencies = DOMUtil.createElement(xml, project, "dependencies"); //$NON-NLS-1$
 		
+		// Add dependencies based on Require-Bundle
 		if(!bundle.requires.isEmpty()) {
-			Element dependencies = DOMUtil.createElement(xml, project, "dependencies"); //$NON-NLS-1$
 			for(String require : bundle.requires) {
 				BundleInfo dep = bundles.get(require);
 				if(dep != null) {
@@ -222,6 +224,21 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true"); //$NON-NLS-1$ //$NON-NLS-2$
 					}
 				}
+			}
+		}
+		
+		// Add internal dependencies for Bundle-ClassPath entries
+		if(!bundle.embeds.isEmpty()) {
+			for(BundleEmbed embed : bundle.embeds) {
+				Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
+				Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
+				groupId.setTextContent(this.groupId);
+				Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
+				depArtifactId.setTextContent(bundle.artifactId);
+				Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
+				depVersion.setTextContent(bundle.version);
+				Element depClassifier = DOMUtil.createElement(xml, dependency, "classifier"); //$NON-NLS-1$
+				depClassifier.setTextContent(embed.name);
 			}
 		}
 		
