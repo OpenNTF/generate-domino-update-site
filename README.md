@@ -55,7 +55,7 @@ Add the OpenNTF Maven server to your ~/.m2/settings.xml file. For example:
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:generateUpdateSite \
+$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:generateUpdateSite \
     -Dsrc="/Volumes/C/Program Files/IBM/Domino" \
     -Ddest="/Users/someuser/Desktop/UpdateSite"
 ```
@@ -68,9 +68,9 @@ To incorporate the tool into another program, create a new object of class `org.
 
 ## `mavenizeBundles` Mojo
 
-### Deprecation
+### p2-layout-resolver
 
-Though this Mojo still exists in this plugin, it is deprecated in favor of the [`p2-layout-resolver` plugin](https://github.com/OpenNTF/p2-layout-provider).
+Though this Mojo still exists in this plugin, you should consider using the [`p2-layout-resolver` plugin](https://github.com/OpenNTF/p2-layout-provider) instead.
 
 ### What It Does
 
@@ -99,11 +99,33 @@ Additionally, this installs any embedded JARs as attached entities with the `cla
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:mavenizeBundles \
+$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:mavenizeBundles \
     -Dsrc="/Users/someuser/Desktop/UpdateSite" \
     -DgroupId=some.group.id # Optional
+    -DoptionalDependencies=false # Optional
+    -DlocalRepositoryPath=/foo/bar # Optional
 ```
 
 - `src` is the location of the Update Site
 - `groupId` is an optional group ID to use for the installed bundles. It defaults to "com.ibm.xsp"
+- `optionalDependencies` sets whether inter-bundle dependencies should be marked as `<optional>true</optional>`
+- `localRepositoryPath` sets a local repository directory to use instead of the default
+
+## `mavenizeAndDeployBundles` Mojo
+
+This mojo is similar to the `mavenizeBundles` mojo, but deploys the bundles to a remote repository.
+
+### Command Line Usage
+
+It has the same options and behavior as `mavenizeBundles`, with the exception of `localRepositoryPath`. Instead, it requires `deploymentRepository` in the same format as `altDeploymentRepository` in the `maven-install-plugin:deploy` goal. For example:
+
+```sh
+$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:mavenizeAndDeployBundles \
+    -Dsrc="/Users/someuser/Desktop/UpdateSite" \
+    -DdeploymentRepository=some.repo::default::https://some.repo/path
+    -DgroupId=some.group.id # Optional
+    -DoptionalDependencies=false # Optional
+```
+
+
 
