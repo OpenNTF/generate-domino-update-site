@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.openntf.p2</groupId>
 	<artifactId>generate-domino-update-site</artifactId>
-	<version>4.0.0-SNAPSHOT</version>
+	<version>4.0.0</version>
 	<packaging>maven-plugin</packaging>
 
 	<name>generate-domino-update-site</name>
@@ -145,7 +145,7 @@
 				<artifactId>maven-plugin-plugin</artifactId>
 				<version>3.5.1</version>
 				<configuration>
-					<goalPrefix>nsfodp</goalPrefix>
+					<goalPrefix>generate-domino-update-site</goalPrefix>
 					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
 				</configuration>
 				<executions>
