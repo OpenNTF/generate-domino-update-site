@@ -145,7 +145,7 @@
 				<artifactId>maven-plugin-plugin</artifactId>
 				<version>3.5.1</version>
 				<configuration>
-					<goalPrefix>nsfodp</goalPrefix>
+					<goalPrefix>generate-domino-update-site</goalPrefix>
 					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
 				</configuration>
 				<executions>
