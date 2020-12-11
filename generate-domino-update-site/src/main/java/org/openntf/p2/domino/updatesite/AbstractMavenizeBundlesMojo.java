@@ -51,7 +51,7 @@ import lombok.SneakyThrows;
 
 public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 
-	public static final String GROUP_ID = "com.ibm.xsp";
+	public static final String GROUP_ID = "com.ibm.xsp"; //$NON-NLS-1$
 	/**
 	 * Source XPages p2 directory
 	 */
