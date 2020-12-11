@@ -60,7 +60,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 	@Parameter(property = "groupId", required = false, defaultValue = GROUP_ID)
 	protected String groupId;
 	@Parameter(property = "optionalDependencies", required = false)
-	protected boolean optionalDependencies = true;
+	protected boolean optionalDependencies = false;
 	@Component
 	protected MavenProject mavenProject;
 	@Component
