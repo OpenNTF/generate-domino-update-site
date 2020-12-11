@@ -53,14 +53,22 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 
 	public static final String GROUP_ID = "com.ibm.xsp"; //$NON-NLS-1$
 	/**
-	 * Source XPages p2 directory
+	 * Source p2 repository
 	 */
 	@Parameter(property = "src", required = true)
 	protected File src;
+	/**
+	 * The groupId to use for mavenized bundles
+	 */
 	@Parameter(property = "groupId", required = false, defaultValue = GROUP_ID)
 	protected String groupId;
+	/**
+	 * Whether dependencies between repository bundles derived from {@code Require-Bundle}
+	 * should be marked as {@code optional}. 
+	 */
 	@Parameter(property = "optionalDependencies", required = false)
 	protected boolean optionalDependencies = false;
+	
 	@Component
 	protected MavenProject mavenProject;
 	@Component
