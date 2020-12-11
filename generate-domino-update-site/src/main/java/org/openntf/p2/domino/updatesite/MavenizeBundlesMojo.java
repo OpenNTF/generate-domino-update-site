@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -53,6 +52,8 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.osgi.util.ManifestElement;
+import org.openntf.p2.domino.updatesite.model.BundleEmbed;
+import org.openntf.p2.domino.updatesite.model.BundleInfo;
 import org.osgi.framework.Version;
 import org.twdata.maven.mojoexecutor.MojoExecutor;
 import org.w3c.dom.Document;
@@ -75,7 +76,7 @@ import static org.twdata.maven.mojoexecutor.MojoExecutor.*;
  * @see Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
  */
 @Mojo(name="mavenizeBundles", requiresProject=false)
-public class MavenizeBundlesMojo extends AbstractMojo {
+public class MavenizeBundlesMojo extends AbstractMavenizeBundlesMojo {
 	
 	private static final String GROUP_ID = "com.ibm.xsp"; //$NON-NLS-1$
 	
@@ -130,7 +131,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				.filter(Objects::nonNull)
 				.forEach(b -> {
 					bundles.add(b);
-					bundlesByName.put(b.artifactId, b);
+					bundlesByName.put(b.getArtifactId(), b);
 				});
 		} catch(IOException e) {
 			throw new MojoExecutionException("Exception while processing bundles");
@@ -152,10 +153,10 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 				),
 				goal("install-file"), //$NON-NLS-1$
 				configuration(
-					element("file", bundle.filePath), //$NON-NLS-1$
+					element("file", bundle.getFilePath()), //$NON-NLS-1$
 					element("groupId", groupId), //$NON-NLS-1$
-					element("artifactId", bundle.artifactId), //$NON-NLS-1$
-					element("version", bundle.version), //$NON-NLS-1$
+					element("artifactId", bundle.getArtifactId()), //$NON-NLS-1$
+					element("version", bundle.getVersion()), //$NON-NLS-1$
 					element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
 					element("pomFile", tempPom.toString()) //$NON-NLS-1$
 				),
@@ -167,14 +168,14 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			);
 			
 			// Generate additional executions for each embed
-			for(BundleEmbed embed : bundle.embeds) {
-				String baseName = embed.name.substring(0, embed.name.lastIndexOf('.'));
+			for(BundleEmbed embed : bundle.getEmbeds()) {
+				String baseName = embed.getName().substring(0, embed.getName().lastIndexOf('.'));
 				
 				List<MojoExecutor.Element> elements = new ArrayList<>(Arrays.asList(
-					element("file", embed.file.toString()), //$NON-NLS-1$
+					element("file", embed.getFile().toString()), //$NON-NLS-1$
 					element("groupId", groupId), //$NON-NLS-1$
-					element("artifactId", bundle.artifactId), //$NON-NLS-1$
-					element("version", bundle.version), //$NON-NLS-1$
+					element("artifactId", bundle.getArtifactId()), //$NON-NLS-1$
+					element("version", bundle.getVersion()), //$NON-NLS-1$
 					element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
 					element("classifier", baseName) //$NON-NLS-1$
 				));
@@ -201,7 +202,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 		}
 	}
 	
-	private Path generateBundlePom(BundleInfo bundle, String basePom, Map<String, BundleInfo> bundles) throws XMLException, IOException {
+	protected Path generateBundlePom(BundleInfo bundle, String basePom, Map<String, BundleInfo> bundles) throws XMLException, IOException {
 		Document xml = DOMUtil.createDocument(basePom);
 		
 		Element project = xml.getDocumentElement();
@@ -210,31 +211,31 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 		groupIdEl.setTextContent(this.groupId);
 		
 		Element artifactId = DOMUtil.createElement(xml, project, "artifactId"); //$NON-NLS-1$
-		artifactId.setTextContent(bundle.artifactId);
+		artifactId.setTextContent(bundle.getArtifactId());
 		
 		Element version = DOMUtil.createElement(xml, project, "version"); //$NON-NLS-1$
-		version.setTextContent(bundle.version);
+		version.setTextContent(bundle.getVersion());
 		
-		if(StringUtil.isNotEmpty(bundle.vendor)) {
+		if(StringUtil.isNotEmpty(bundle.getVendor())) {
 			Element organization = DOMUtil.createElement(xml, project, "organization"); //$NON-NLS-1$
 			Element name = DOMUtil.createElement(xml, organization, "name"); //$NON-NLS-1$
-			name.setTextContent(bundle.vendor);
+			name.setTextContent(bundle.getVendor());
 		}
 
 		Element dependencies = DOMUtil.createElement(xml, project, "dependencies"); //$NON-NLS-1$
 		
 		// Add dependencies based on Require-Bundle
-		if(!bundle.requires.isEmpty()) {
-			for(String require : bundle.requires) {
+		if(!bundle.getRequires().isEmpty()) {
+			for(String require : bundle.getRequires()) {
 				BundleInfo dep = bundles.get(require);
 				if(dep != null) {
 					Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
 					Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
 					groupId.setTextContent(this.groupId);
 					Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
-					depArtifactId.setTextContent(dep.artifactId);
+					depArtifactId.setTextContent(dep.getArtifactId());
 					Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
-					depVersion.setTextContent(dep.version);
+					depVersion.setTextContent(dep.getVersion());
 					if(optionalDependencies) {
 						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true"); //$NON-NLS-1$ //$NON-NLS-2$
 					}
@@ -243,22 +244,22 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 		}
 		
 		// Add internal dependencies for Bundle-ClassPath entries
-		if(!bundle.embeds.isEmpty()) {
-			for(BundleEmbed embed : bundle.embeds) {
+		if(!bundle.getEmbeds().isEmpty()) {
+			for(BundleEmbed embed : bundle.getEmbeds()) {
 				Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
 				Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
 				groupId.setTextContent(this.groupId);
 				Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
-				depArtifactId.setTextContent(bundle.artifactId);
+				depArtifactId.setTextContent(bundle.getArtifactId());
 				Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
-				depVersion.setTextContent(bundle.version);
+				depVersion.setTextContent(bundle.getVersion());
 				Element depClassifier = DOMUtil.createElement(xml, dependency, "classifier"); //$NON-NLS-1$
-				depClassifier.setTextContent(embed.name);
+				depClassifier.setTextContent(embed.getName());
 			}
 		}
 		
 		// Write out the temporary pom
-		Path tempPom = Files.createTempFile(bundle.artifactId, ".pom"); //$NON-NLS-1$
+		Path tempPom = Files.createTempFile(bundle.getArtifactId(), ".pom"); //$NON-NLS-1$
 		tempPom.toFile().deleteOnExit();
 		Files.write(tempPom, DOMUtil.getXMLString(xml).getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
 		
@@ -266,7 +267,7 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 	}
 	
 	@SneakyThrows
-	private BundleInfo toInfo(Path path) {
+	protected BundleInfo toInfo(Path path) {
 		JarFile jarFile = new JarFile(path.toFile());
 		try {
 			Manifest manifest = jarFile.getManifest();
@@ -448,58 +449,6 @@ public class MavenizeBundlesMojo extends AbstractMojo {
 			jarFile.close();
 		}
 	}
-	
-	// *******************************************************************************
-	// * Bundle representation classes
-	// *******************************************************************************
-		
-	private static class BundleInfo {
-		private final String name;
-		private final String vendor;
-		private final String artifactId;
-		private final String version;
-		private final String filePath;
-		private final List<String> requires;
-		private final List<BundleEmbed> embeds;
-		
-		public BundleInfo(String name, String vendor, String artifactId, String version, String filePath, List<String> requires, List<BundleEmbed> embeds) {
-			this.name = name;
-			this.vendor = vendor;
-			this.artifactId = artifactId;
-			this.version = version;
-			this.filePath = filePath;
-			this.requires = requires;
-			this.embeds = embeds;
-		}
-		
-		@Override
-		public String toString() {
-			return MessageFormat.format("[{0}: name={1}, vendor={2}, artifactId={3}, version={4}, filePath={5}, requires={6}, embeds={7}]", //$NON-NLS-1$
-					getClass().getSimpleName(),
-					name,
-					vendor,
-					artifactId,
-					version,
-					filePath,
-					requires,
-					embeds
-			);
-		}
-	}
-	
-	private static class BundleEmbed {
-		private final String name;
-		private final Path file;
-		
-		public BundleEmbed(String name, Path file) {
-			this.name = name;
-			this.file = file;
-		}
-		
-		@Override
-		public String toString() {
-			return MessageFormat.format("[{0}: name={1}]", getClass().getSimpleName(), name); //$NON-NLS-1$
-		}
-	}
+
 
 }
