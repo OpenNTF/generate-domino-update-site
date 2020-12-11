@@ -69,9 +69,9 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 	@Parameter(property = "optionalDependencies", required = false)
 	protected boolean optionalDependencies = false;
 	
-	@Component
+	@Parameter(defaultValue = "${project}", readonly = true)
 	protected MavenProject mavenProject;
-	@Component
+	@Parameter(defaultValue = "${session}", readonly = true)
 	protected MavenSession mavenSession;
 	@Component
 	protected BuildPluginManager pluginManager;
