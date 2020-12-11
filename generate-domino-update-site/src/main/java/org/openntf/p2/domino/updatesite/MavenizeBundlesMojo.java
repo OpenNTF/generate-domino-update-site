@@ -84,7 +84,7 @@ public class MavenizeBundlesMojo extends AbstractMavenizeBundlesMojo {
 		
 		// Generate additional executions for each embed
 		for(BundleEmbed embed : bundle.getEmbeds()) {
-			String baseName = embed.getName().substring(0, embed.getName().lastIndexOf('.'));
+			String baseName = embed.getName().substring(0, embed.getName().lastIndexOf('.')).replace('/', '$');
 			
 			List<MojoExecutor.Element> elements = new ArrayList<>(Arrays.asList(
 				element("file", embed.getFile().toString()), //$NON-NLS-1$
