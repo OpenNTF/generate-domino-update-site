@@ -53,7 +53,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 			dominoDir = findDominoDir();
 		}
 		if(dominoDir == null || !Files.exists(dominoDir)) {
-			throw new MojoExecutionException("Unable to locate Domino directory; please specify using the `src` parameter");
+			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.unableToLocateDomino")); //$NON-NLS-1$
 		}
 		Path destDir = dest.toPath();
 		

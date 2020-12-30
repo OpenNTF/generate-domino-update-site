@@ -11,6 +11,7 @@ import static org.twdata.maven.mojoexecutor.MojoExecutor.plugin;
 import static org.twdata.maven.mojoexecutor.MojoExecutor.version;
 
 import java.nio.file.Path;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,7 @@ public class DeployMavenizedBundlesMojo extends AbstractMavenizeBundlesMojo {
 			Path tempPom) throws MojoExecutionException {
 		String[] repoBits = deploymentRepository.split("::", 3); //$NON-NLS-1$
 		if(repoBits.length != 3) {
-			throw new IllegalArgumentException("Unexpected repository format: " + deploymentRepository);
+			throw new IllegalArgumentException(MessageFormat.format(Messages.getString("DeployMavenizedBundlesMojo.unexpectedRepositoryFormat"), deploymentRepository)); //$NON-NLS-1$
 		}
 		String repositoryId = repoBits[0];
 		String url = repoBits[2];

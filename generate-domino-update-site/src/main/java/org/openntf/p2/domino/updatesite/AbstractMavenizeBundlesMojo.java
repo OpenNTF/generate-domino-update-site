@@ -101,7 +101,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 					bundlesByName.put(b.getArtifactId(), b);
 				});
 		} catch(IOException e) {
-			throw new MojoExecutionException("Exception while processing bundles");
+			throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionProcessingBundles")); //$NON-NLS-1$
 		}
 			
 		for(BundleInfo bundle : bundles) {
@@ -109,7 +109,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 			try {
 				tempPom = generateBundlePom(bundle, basePom, bundlesByName);
 			} catch(XMLException | IOException e) {
-				throw new MojoExecutionException("Exception while generating temporary pom", e);
+				throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionGeneratingPom"), e); //$NON-NLS-1$
 			}
 			
 			processBundle(bundle, bundles, bundlesByName, tempPom);

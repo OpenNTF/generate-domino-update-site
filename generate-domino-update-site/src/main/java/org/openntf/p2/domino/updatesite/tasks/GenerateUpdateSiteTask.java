@@ -44,6 +44,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.openntf.p2.domino.updatesite.Messages;
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
 import org.tukaani.xz.XZInputStream;
 import org.w3c.dom.Document;
@@ -208,7 +209,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 						}
 					}
 				} else {
-					System.out.println("Unable to locate xsp.http.bootstrap.jar - skipping bundle creation");
+					System.out.println(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
 				}
 			}
 
@@ -228,14 +229,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 	// *******************************************************************************
 	private Path checkDirectory(Path dir) {
 		if (!Files.exists(dir) || !Files.isDirectory(dir)) {
-			throw new RuntimeException("Directory does not exist: " + dir.toAbsolutePath());
+			throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.directoryNotExists") + dir.toAbsolutePath()); //$NON-NLS-1$
 		}
 		return dir;
 	}
 
 	private Path mkDir(Path dir) throws IOException {
 		if (Files.isRegularFile(dir)) {
-			throw new RuntimeException("Planned directory exists as a file: " + dir.toAbsolutePath());
+			throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.directoryExistsAsFile") + dir.toAbsolutePath()); //$NON-NLS-1$
 		}
 		Files.createDirectories(dir);
 		return dir;
@@ -243,7 +244,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {
 		Files.list(sourceDir).forEach(artifact -> {
-			System.out.println("Copying " + artifact.getFileName().toString());
+			System.out.println(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
 			try {
 				Path destJar = copyOrPack(artifact, destDir);
 				
@@ -323,11 +324,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 		Path f = baseDir;
 
 		if (!Files.isDirectory(f)) {
-			throw new RuntimeException("Repository directory does not exist.");
+			throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.repoDirDoesNotExist")); //$NON-NLS-1$
 		} else {
 			Path features = f.resolve("features"); //$NON-NLS-1$
 			if (!Files.isDirectory(features)) {
-				throw new RuntimeException("Unable to find features directory: " + features.toAbsolutePath());
+				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.unableToFindFeatures") + features.toAbsolutePath()); //$NON-NLS-1$
 			}
 
 			try {
@@ -348,7 +349,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 					String featureFilename = feature.getFileName().toString();
 					Matcher matcher = FEATURE_FILENAME_PATTERN.matcher(featureFilename);
 					if (!matcher.matches()) {
-						throw new IllegalStateException("Could not match filename pattern to " + featureFilename);
+						throw new IllegalStateException(Messages.getString("GenerateUpdateSiteTask.mismatchedFilename") + featureFilename); //$NON-NLS-1$
 					}
 					String featureName = matcher.group(1);
 					String version = matcher.group(2);
@@ -370,12 +371,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 				try (BufferedWriter w = Files.newBufferedWriter(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 					w.write(xml);
 				} catch (IOException e) {
-					throw new RuntimeException("Error writing site.xml file", e);
+					throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.errorWritingSiteXml"), e); //$NON-NLS-1$
 				}
 
-				System.out.println(StringUtil.format("Wrote site.xml contents to {0}", output.toAbsolutePath()));
+				System.out.println(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
 			} catch (XMLException e) {
-				throw new RuntimeException("Exception while building site.xml document", e);
+				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.exceptionBuildingSiteXml"), e); //$NON-NLS-1$
 			}
 		}
 	}
@@ -402,7 +403,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			.filter(path -> Files.exists(path))
 			.collect(Collectors.toList());
 		if(eclipsePaths.isEmpty()) {
-			throw new IllegalArgumentException("Unable to locate plugin directories within " + domino);
+			throw new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocatePlugins") + domino); //$NON-NLS-1$
 		}
 		return eclipsePaths;
 	}
@@ -420,7 +421,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 		.filter(Files::exists)
 		.filter(Files::isRegularFile)
 		.findFirst()
-		.orElseThrow(() -> new IllegalArgumentException("Unable to locate Notes.jar within " + domino));
+		.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateNotesJar") + domino)); //$NON-NLS-1$
 	}
 	
 	/**
@@ -449,7 +450,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				return DOMUtil.createDocument(zis);
 			}
 		} catch (IOException e) {
-			System.err.println("Unable to load Neon artifacts.xml.xz");
+			System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon")); //$NON-NLS-1$
 			e.printStackTrace();
 			return null;
 		}
@@ -479,10 +480,10 @@ public class GenerateUpdateSiteTask implements Runnable {
 				urlString = PathUtil.concat(urlString, bundleName, '/');
 				URL bundleUrl = new URL(urlString);
 				try(InputStream is = bundleUrl.openStream()) {
-					System.out.println("- Downloading source bundle " + artifact.getFileName().toString());
+					System.out.println(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
 					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
 				} catch(IOException e) {
-					System.err.println("Unable to download source bundle " + urlString);
+					System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString); //$NON-NLS-1$
 					e.printStackTrace();
 				}
 			}
