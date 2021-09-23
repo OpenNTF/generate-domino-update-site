@@ -248,7 +248,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			try {
 				Path destJar = copyOrPack(artifact, destDir);
 				
-				if(eclipseArtifacts != null) {
+				if(eclipseArtifacts != null && destJar != null) {
 					downloadSource(destJar, destDir, eclipseArtifacts);
 				}
 
