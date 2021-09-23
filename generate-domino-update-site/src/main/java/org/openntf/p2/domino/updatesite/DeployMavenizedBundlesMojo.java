@@ -55,7 +55,7 @@ public class DeployMavenizedBundlesMojo extends AbstractMavenizeBundlesMojo {
 		List<String> embedFiles = new ArrayList<>();
 		List<String> embedClassifiers = new ArrayList<>();
 		for(BundleEmbed embed : bundle.getEmbeds()) {
-			String baseName = embed.getName().substring(0, embed.getName().lastIndexOf('.')).replace('/', '$');
+			String baseName = toEmbedClassifierName(embed.getName());
 			embedFiles.add(embed.getFile().toString());
 			embedClassifiers.add(baseName);
 		}

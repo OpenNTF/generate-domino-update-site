@@ -170,7 +170,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
 				depVersion.setTextContent(bundle.getVersion());
 				Element depClassifier = DOMUtil.createElement(xml, dependency, "classifier"); //$NON-NLS-1$
-				depClassifier.setTextContent(embed.getName());
+				depClassifier.setTextContent(toEmbedClassifierName(embed.getName()));
 			}
 		}
 		
@@ -365,4 +365,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		}
 	}
 
+	public static String toEmbedClassifierName(String embedName) {
+		return embedName.substring(0, embedName.lastIndexOf('.')).replace('/', '$');
+	}
 }
