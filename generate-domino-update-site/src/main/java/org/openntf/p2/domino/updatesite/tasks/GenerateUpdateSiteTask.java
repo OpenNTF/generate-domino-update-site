@@ -125,7 +125,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 								String exports = notesJarFile.stream()
 										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
 										.filter(Objects::nonNull)
-										.map(path -> path.toString().replace('/', '.'))
+										.map(path -> path.toString().replace('/', '.').replace('\\', '.'))
 										.distinct()
 										.filter(Objects::nonNull)
 										.filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
@@ -192,7 +192,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 										.filter(jarEntry -> StringUtil.toString(jarEntry.getName()).endsWith(".class")) //$NON-NLS-1$
 										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
 										.filter(Objects::nonNull)
-										.map(path -> path.toString().replace('/', '.'))
+										.map(path -> path.toString().replace('/', '.').replace('\\', '.'))
 										.distinct()
 										.filter(Objects::nonNull)
 										.filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
