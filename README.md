@@ -55,7 +55,7 @@ Add the OpenNTF Maven server to your ~/.m2/settings.xml file. For example:
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:generateUpdateSite \
+$ mvn org.openntf.p2:generate-domino-update-site:4.1.0:generateUpdateSite \
     -Dsrc="/Volumes/C/Program Files/IBM/Domino" \
     -Ddest="/Users/someuser/Desktop/UpdateSite"
 ```
