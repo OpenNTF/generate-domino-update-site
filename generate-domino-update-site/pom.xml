@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.openntf.p2</groupId>
 	<artifactId>generate-domino-update-site</artifactId>
-	<version>4.0.0</version>
+	<version>4.1.0</version>
 	<packaging>maven-plugin</packaging>
 
 	<name>generate-domino-update-site</name>
@@ -180,7 +180,7 @@
 					</excludes>
 					<properties>
 						<owner>Jesse Gallagher</owner>
-						<copyrightYear>2020</copyrightYear>
+						<copyrightYear>2021</copyrightYear>
 					</properties>
 				</configuration>
 			</plugin>

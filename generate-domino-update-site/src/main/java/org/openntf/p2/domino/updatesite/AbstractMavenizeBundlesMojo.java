@@ -101,7 +101,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 					bundlesByName.put(b.getArtifactId(), b);
 				});
 		} catch(IOException e) {
-			throw new MojoExecutionException("Exception while processing bundles");
+			throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionProcessingBundles")); //$NON-NLS-1$
 		}
 			
 		for(BundleInfo bundle : bundles) {
@@ -109,7 +109,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 			try {
 				tempPom = generateBundlePom(bundle, basePom, bundlesByName);
 			} catch(XMLException | IOException e) {
-				throw new MojoExecutionException("Exception while generating temporary pom", e);
+				throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionGeneratingPom"), e); //$NON-NLS-1$
 			}
 			
 			processBundle(bundle, bundles, bundlesByName, tempPom);
@@ -170,7 +170,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
 				depVersion.setTextContent(bundle.getVersion());
 				Element depClassifier = DOMUtil.createElement(xml, dependency, "classifier"); //$NON-NLS-1$
-				depClassifier.setTextContent(embed.getName());
+				depClassifier.setTextContent(toEmbedClassifierName(embed.getName()));
 			}
 		}
 		
@@ -365,4 +365,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		}
 	}
 
+	public static String toEmbedClassifierName(String embedName) {
+		return embedName.substring(0, embedName.lastIndexOf('.')).replace('/', '$');
+	}
 }
