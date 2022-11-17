@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -36,6 +37,7 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.osgi.util.ManifestElement;
+import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.model.BundleEmbed;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
 import org.osgi.framework.Version;
@@ -44,8 +46,6 @@ import org.w3c.dom.Element;
 
 import com.ibm.commons.util.StringUtil;
 import com.ibm.commons.util.io.StreamUtil;
-import com.ibm.commons.xml.DOMUtil;
-import com.ibm.commons.xml.XMLException;
 
 import lombok.SneakyThrows;
 
@@ -108,7 +108,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 			Path tempPom;
 			try {
 				tempPom = generateBundlePom(bundle, basePom, bundlesByName);
-			} catch(XMLException | IOException e) {
+			} catch(IOException e) {
 				throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionGeneratingPom"), e); //$NON-NLS-1$
 			}
 			
@@ -118,42 +118,42 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 	
 	protected abstract void processBundle(BundleInfo bundle, List<BundleInfo> bundles, Map<String, BundleInfo> bundlesByName, Path tempPom) throws MojoExecutionException;
 	
-	protected Path generateBundlePom(BundleInfo bundle, String basePom, Map<String, BundleInfo> bundles) throws XMLException, IOException {
-		Document xml = DOMUtil.createDocument(basePom);
+	protected Path generateBundlePom(BundleInfo bundle, String basePom, Map<String, BundleInfo> bundles) throws IOException {
+		Document xml = NSFODPDomUtil.createDocument(new StringReader(basePom));
 		
 		Element project = xml.getDocumentElement();
 	
-		Element groupIdEl = DOMUtil.createElement(xml, project, "groupId"); //$NON-NLS-1$
+		Element groupIdEl = NSFODPDomUtil.createElement(project, "groupId"); //$NON-NLS-1$
 		groupIdEl.setTextContent(this.groupId);
 		
-		Element artifactId = DOMUtil.createElement(xml, project, "artifactId"); //$NON-NLS-1$
+		Element artifactId = NSFODPDomUtil.createElement(project, "artifactId"); //$NON-NLS-1$
 		artifactId.setTextContent(bundle.getArtifactId());
 		
-		Element version = DOMUtil.createElement(xml, project, "version"); //$NON-NLS-1$
+		Element version = NSFODPDomUtil.createElement(project, "version"); //$NON-NLS-1$
 		version.setTextContent(bundle.getVersion());
 		
 		if(StringUtil.isNotEmpty(bundle.getVendor())) {
-			Element organization = DOMUtil.createElement(xml, project, "organization"); //$NON-NLS-1$
-			Element name = DOMUtil.createElement(xml, organization, "name"); //$NON-NLS-1$
+			Element organization = NSFODPDomUtil.createElement(project, "organization"); //$NON-NLS-1$
+			Element name = NSFODPDomUtil.createElement(organization, "name"); //$NON-NLS-1$
 			name.setTextContent(bundle.getVendor());
 		}
 	
-		Element dependencies = DOMUtil.createElement(xml, project, "dependencies"); //$NON-NLS-1$
+		Element dependencies = NSFODPDomUtil.createElement(project, "dependencies"); //$NON-NLS-1$
 		
 		// Add dependencies based on Require-Bundle
 		if(!bundle.getRequires().isEmpty()) {
 			for(String require : bundle.getRequires()) {
 				BundleInfo dep = bundles.get(require);
 				if(dep != null) {
-					Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
-					Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
+					Element dependency = NSFODPDomUtil.createElement(dependencies, "dependency"); //$NON-NLS-1$
+					Element groupId = NSFODPDomUtil.createElement(dependency, "groupId"); //$NON-NLS-1$
 					groupId.setTextContent(this.groupId);
-					Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
+					Element depArtifactId = NSFODPDomUtil.createElement(dependency, "artifactId"); //$NON-NLS-1$
 					depArtifactId.setTextContent(dep.getArtifactId());
-					Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
+					Element depVersion = NSFODPDomUtil.createElement(dependency, "version"); //$NON-NLS-1$
 					depVersion.setTextContent(dep.getVersion());
 					if(optionalDependencies) {
-						DOMUtil.createElement(xml, dependency, "optional").setTextContent("true"); //$NON-NLS-1$ //$NON-NLS-2$
+						NSFODPDomUtil.createElement(dependency, "optional").setTextContent("true"); //$NON-NLS-1$ //$NON-NLS-2$
 					}
 				}
 			}
@@ -162,14 +162,14 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		// Add internal dependencies for Bundle-ClassPath entries
 		if(!bundle.getEmbeds().isEmpty()) {
 			for(BundleEmbed embed : bundle.getEmbeds()) {
-				Element dependency = DOMUtil.createElement(xml, dependencies, "dependency"); //$NON-NLS-1$
-				Element groupId = DOMUtil.createElement(xml, dependency, "groupId"); //$NON-NLS-1$
+				Element dependency = NSFODPDomUtil.createElement(dependencies, "dependency"); //$NON-NLS-1$
+				Element groupId = NSFODPDomUtil.createElement(dependency, "groupId"); //$NON-NLS-1$
 				groupId.setTextContent(this.groupId);
-				Element depArtifactId = DOMUtil.createElement(xml, dependency, "artifactId"); //$NON-NLS-1$
+				Element depArtifactId = NSFODPDomUtil.createElement(dependency, "artifactId"); //$NON-NLS-1$
 				depArtifactId.setTextContent(bundle.getArtifactId());
-				Element depVersion = DOMUtil.createElement(xml, dependency, "version"); //$NON-NLS-1$
+				Element depVersion = NSFODPDomUtil.createElement(dependency, "version"); //$NON-NLS-1$
 				depVersion.setTextContent(bundle.getVersion());
-				Element depClassifier = DOMUtil.createElement(xml, dependency, "classifier"); //$NON-NLS-1$
+				Element depClassifier = NSFODPDomUtil.createElement(dependency, "classifier"); //$NON-NLS-1$
 				depClassifier.setTextContent(toEmbedClassifierName(embed.getName()));
 			}
 		}
@@ -177,7 +177,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		// Write out the temporary pom
 		Path tempPom = Files.createTempFile(bundle.getArtifactId(), ".pom"); //$NON-NLS-1$
 		tempPom.toFile().deleteOnExit();
-		Files.write(tempPom, DOMUtil.getXMLString(xml).getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
+		Files.write(tempPom, NSFODPDomUtil.getXmlString(xml, null).getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
 		
 		return tempPom;
 	}

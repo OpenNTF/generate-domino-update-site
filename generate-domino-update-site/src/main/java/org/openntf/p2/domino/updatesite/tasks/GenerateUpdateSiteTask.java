@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.FileVisitResult;
@@ -32,9 +33,12 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
@@ -44,17 +48,17 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.Messages;
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
 import org.tukaani.xz.XZInputStream;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
-import com.ibm.commons.xml.DOMUtil;
-import com.ibm.commons.xml.XMLException;
-import com.ibm.commons.xml.XResult;
+import com.ibm.commons.util.io.StreamUtil;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
@@ -79,7 +83,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 		Path domino = checkDirectory(dominoDir);
 		
 		List<Path> eclipsePaths = findEclipsePaths(domino);
-		Path notesJar = findNotesJar(domino);
+		Path notesJar = findNotesJar(domino)
+				.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateLibExtJar", "Notes.jar", domino))); //$NON-NLS-1$ //$NON-NLS-2$
 
 		try {
 			Document eclipseArtifacts = fetchEclipseArtifacts();
@@ -98,6 +103,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 					copyArtifacts(plugins, destPlugins, eclipseArtifacts);
 				}
 			}
+			
+			// Create a Notes.jar wrapper bundle pair
 
 			String baseVersion = readNotesVersion(notesJar);
 			String version = baseVersion + "-1500"; //$NON-NLS-1$
@@ -169,8 +176,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 			
 			// Create an XSP HTTP Bootstrap bundle, if possible
 			{
-				Path xspBootstrap = findXspBootstrap(domino);
-				if(Files.isRegularFile(xspBootstrap)) {
+				Optional<Path> xspBootstrap = findXspBootstrap(domino);
+				if(xspBootstrap.isPresent()) {
 					String bundleId = "com.ibm.xsp.http.bootstrap"; //$NON-NLS-1$
 					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
 					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -187,7 +194,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
 							
 							// Find the packages to export
-							try (JarFile notesJarFile = new JarFile(xspBootstrap.toFile())) {
+							try (JarFile notesJarFile = new JarFile(xspBootstrap.get().toFile())) {
 								String exports = notesJarFile.stream()
 										.filter(jarEntry -> StringUtil.toString(jarEntry.getName()).endsWith(".class")) //$NON-NLS-1$
 										.map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
@@ -204,7 +211,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 							jos.closeEntry();
 
 							jos.putNextEntry(new ZipEntry("xsp.http.bootstrap.jar")); //$NON-NLS-1$
-							Files.copy(xspBootstrap, jos);
+							Files.copy(xspBootstrap.get(), jos);
 							jos.closeEntry();
 						}
 					}
@@ -212,6 +219,80 @@ public class GenerateUpdateSiteTask implements Runnable {
 					System.out.println(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
 				}
 			}
+			
+			// Build a NAPI fragment if on 12.0.2+
+			findNapiJar(domino).ifPresent(napiJar -> {
+				try {
+					// Find the existing bundle to get its version number
+					Path napiBundle = Files.list(destPlugins)
+						.filter(p -> p.getFileName().toString().startsWith("com.ibm.domino.napi_")) //$NON-NLS-1$
+						.findFirst()
+						.orElseThrow(() -> new IllegalStateException(Messages.getString("GenerateUpdateSiteTask.unableToFindNapiBundle", destPlugins))); //$NON-NLS-1$
+					
+					// Rewrite the MANIFEST.MF to allow Eclipse to resolve fragment classes
+					{
+						Path tempBundle = Files.createTempFile("com.ibm.domino.napi", ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+						
+						try(
+							InputStream is = Files.newInputStream(napiBundle);
+							JarInputStream jis = new JarInputStream(is);
+							OutputStream os = Files.newOutputStream(tempBundle, StandardOpenOption.TRUNCATE_EXISTING);
+							JarOutputStream jos = new JarOutputStream(os)
+						) {
+							JarEntry sourceEntry;
+							while((sourceEntry = jis.getNextJarEntry()) != null) {
+								jos.putNextEntry(sourceEntry);
+								if("META-INF/MANIFEST.MF".equals(sourceEntry.getName())) { //$NON-NLS-1$
+									// Modify the manifest
+									Manifest napiManifest = new Manifest(jis);
+									napiManifest.getMainAttributes().putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
+									napiManifest.write(jos);
+								} else {
+									// Otherwise, copy cleanly
+									StreamUtil.copyStream(jis, jos);
+								}
+							}
+						}
+						
+						Files.delete(napiBundle);
+						Files.move(tempBundle, napiBundle);
+						
+					}
+					
+					String napiVersion = napiBundle.getFileName().toString().substring("com.ibm.domino.napi_".length()); //$NON-NLS-1$
+					napiVersion = napiVersion.substring(0, version.length()-".jar".length()); //$NON-NLS-1$
+					
+					// Create the fragment to house the JAR
+					{
+						String fragmentId = "com.ibm.domino.napi.impl"; //$NON-NLS-1$
+						Path plugin = destPlugins.resolve(fragmentId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+						try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+							try (JarOutputStream jos = new JarOutputStream(fos)) {
+								jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
+								Manifest manifest = new Manifest();
+								Attributes attrs = manifest.getMainAttributes();
+								attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Bundle-ClassPath", "lwpd.domino.napi.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Fragment-Host", "com.ibm.domino.napi"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Bundle-Name", "Api Plug-in Implementation JAR"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Bundle-SymbolicName", fragmentId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
+								attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+								manifest.write(jos);
+								jos.closeEntry();
+
+								jos.putNextEntry(new ZipEntry("lwpd.domino.napi.jar")); //$NON-NLS-1$
+								Files.copy(napiJar, jos);
+								jos.closeEntry();
+							}
+						}
+					}
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			});
+			
 
 			// Create site.xml
 			buildSiteXml(dest);
@@ -332,13 +413,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 			}
 
 			try {
-				Document doc = DOMUtil.createDocument();
-				Element root = DOMUtil.createElement(doc, "site"); //$NON-NLS-1$
+				Document doc = NSFODPDomUtil.createDocument();
+				Element root = NSFODPDomUtil.createElement(doc, "site"); //$NON-NLS-1$
 
 				// Create the category entry if applicable
 				String category = "XPages Runtime"; //$NON-NLS-1$
 				if (StringUtil.isNotEmpty(category)) {
-					Element categoryDef = DOMUtil.createElement(doc, root, "category-def"); //$NON-NLS-1$
+					Element categoryDef = NSFODPDomUtil.createElement(root, "category-def"); //$NON-NLS-1$
 					categoryDef.setAttribute("name", category); //$NON-NLS-1$
 					categoryDef.setAttribute("label", category); //$NON-NLS-1$
 				}
@@ -354,19 +435,19 @@ public class GenerateUpdateSiteTask implements Runnable {
 					String featureName = matcher.group(1);
 					String version = matcher.group(2);
 
-					Element featureElement = DOMUtil.createElement(doc, root, "feature"); //$NON-NLS-1$
+					Element featureElement = NSFODPDomUtil.createElement(root, "feature"); //$NON-NLS-1$
 					String url = "features/" + featureFilename; //$NON-NLS-1$
 					featureElement.setAttribute("url", url); //$NON-NLS-1$
 					featureElement.setAttribute("id", featureName); //$NON-NLS-1$
 					featureElement.setAttribute("version", version); //$NON-NLS-1$
 
 					if (StringUtil.isNotEmpty(category)) {
-						Element categoryElement = DOMUtil.createElement(doc, featureElement, "category"); //$NON-NLS-1$
+						Element categoryElement = NSFODPDomUtil.createElement(featureElement, "category"); //$NON-NLS-1$
 						categoryElement.setAttribute("name", category); //$NON-NLS-1$
 					}
 				});
 
-				String xml = DOMUtil.getXMLString(doc, false, true);
+				String xml = NSFODPDomUtil.getXmlString(doc, null);
 				Path output = f.resolve("site.xml"); //$NON-NLS-1$
 				try (BufferedWriter w = Files.newBufferedWriter(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 					w.write(xml);
@@ -375,7 +456,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				}
 
 				System.out.println(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
-			} catch (XMLException e) {
+			} catch (Exception e) {
 				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.exceptionBuildingSiteXml"), e); //$NON-NLS-1$
 			}
 		}
@@ -387,12 +468,18 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private List<Path> findEclipsePaths(Path domino) {
 		// Account for various layouts
 		List<Path> eclipsePaths = Stream.of(
-				// macOS Notes client
+				// macOS Notes client < 12
 				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-				// macOS Notes client pointed at Contents/MacOS
+				// macOS Notes client 12
+				domino.resolve("Contents").resolve("Eclipse").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				domino.resolve("Contents").resolve("Eclipse").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// macOS Notes client < 12 pointed at Contents/MacOS
 				domino.resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
 				domino.resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
+				// macOS Notes client 12 pointed at Contents/MacOS
+				domino.getParent().resolve("Eclipse").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.getParent().resolve("Eclipse").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				// Domino and Windows Notes
 				domino.resolve("osgi").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				domino.resolve("osgi").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -411,17 +498,31 @@ public class GenerateUpdateSiteTask implements Runnable {
 	/**
 	 * @since 3.1.0
 	 */
-	private Path findNotesJar(Path domino) {
+	private Optional<Path> findNotesJar(Path domino) {
+		return findLibExtJar(domino, "Notes.jar"); //$NON-NLS-1$
+	}
+	
+	/**
+	 * @since 4.2.0
+	 */
+	private Optional<Path> findNapiJar(Path domino) {
+		return findLibExtJar(domino, "lwpd.domino.napi.jar"); //$NON-NLS-1$
+	}
+	
+	private Optional<Path> findLibExtJar(Path domino, String jarName) {
 		return Stream.of(
-			// macOS Notes client
-			domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
-			// All Notes and Domino, including macOS Notes client pointed at Contents/MacOS
-			domino.resolve("jvm").resolve("lib").resolve("ext").resolve("Notes.jar") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// macOS Notes client < 12
+				domino.resolve("Contents").resolve("MacOS").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+				// macOS Notes client 12
+				domino.resolve("Contents").resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+				// All Notes and Domino, including < 12 macOS Notes client pointed at Contents/MacOS
+				domino.resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				// macOS Notes client 12 pointed at Contents/MacOS
+				domino.getParent().resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 		)
 		.filter(Files::exists)
 		.filter(Files::isRegularFile)
-		.findFirst()
-		.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateNotesJar") + domino)); //$NON-NLS-1$
+		.findFirst();
 	}
 	
 	/**
@@ -429,9 +530,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 	 * @return a {@link Path} to xsp.http.bootstrap.jar, which may not exist
 	 * @since 3.2.0
 	 */
-	private Path findXspBootstrap(Path domino) {
+	private Optional<Path> findXspBootstrap(Path domino) {
 		// This only exists on servers and the Windows client for now, so no need to look through special Mac paths
-		return domino.resolve("jvm").resolve("lib").resolve("ext").resolve("xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		return findLibExtJar(domino, "xsp.http.bootstrap.jar"); //$NON-NLS-1$
 	}
 
 	/**
@@ -442,12 +543,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 	 * 
 	 * @since 3.3.0
 	 */
-	private Document fetchEclipseArtifacts() throws MalformedURLException, XMLException {
+	private Document fetchEclipseArtifacts() throws MalformedURLException {
 		String urlString = PathUtil.concat(NEON_UPDATE_SITE, "artifacts.xml.xz", '/'); //$NON-NLS-1$
 		URL artifactsUrl = new URL(urlString);
 		try(InputStream is = artifactsUrl.openStream()) {
 			try(XZInputStream zis = new XZInputStream(is)) {
-				return DOMUtil.createDocument(zis);
+				return NSFODPDomUtil.createDocument(zis);
 			}
 		} catch (IOException e) {
 			System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon")); //$NON-NLS-1$
@@ -469,9 +570,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 			String version = matcher.group(2);
 			
 			String query = StringUtil.format("/repository/artifacts/artifact[@classifier='osgi.bundle'][@id='{0}'][@version='{1}']", symbolicName, version); //$NON-NLS-1$
-			XResult result = DOMUtil.evaluateXPath(artifacts, query);
-			Object[] artifactNodes = result.getNodes();
-			if(artifactNodes != null && artifactNodes.length > 0) {
+			NodeList result = NSFODPDomUtil.selectNodes(artifacts, query);
+			if(result.getLength() > 0) {
 				// Then we can be confident that it will exist at the expected URL
 				String bundleName = StringUtil.format("{0}_{1}.jar", symbolicName, version); //$NON-NLS-1$
 				Path dest = destDir.resolve(bundleName);

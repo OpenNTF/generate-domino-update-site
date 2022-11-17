@@ -1,5 +1,6 @@
 package org.openntf.p2.domino.updatesite;
 
+import java.text.MessageFormat;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
@@ -17,5 +18,9 @@ public class Messages {
 		} catch (MissingResourceException e) {
 			return '!' + key + '!';
 		}
+	}
+
+	public static String getString(String key, Object... params) {
+		return MessageFormat.format(getString(key), params);
 	}
 }
