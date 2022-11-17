@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.openntf.p2</groupId>
 	<artifactId>generate-domino-update-site</artifactId>
-	<version>4.2.0-SNAPSHOT</version>
+	<version>4.2.0</version>
 	<packaging>maven-plugin</packaging>
 
 	<name>generate-domino-update-site</name>
@@ -13,7 +13,7 @@
 		<compiler>1.8</compiler>
 		
 		<!-- Maven API version. This version should be supported by m2e -->
-		<maven.api.version>3.3.9</maven.api.version>
+		<maven.api.version>3.8.6</maven.api.version>
 	</properties>
 
 	<url>https://openntf.org/main.nsf/project.xsp?r=project/NSF%20ODP%20Tooling</url>
@@ -76,7 +76,7 @@
 		<dependency>
 			<groupId>org.codehaus.plexus</groupId>
 			<artifactId>plexus-utils</artifactId>
-			<version>3.0.8</version>
+			<version>3.5.0</version>
 		</dependency>
 		
 		<dependency>
@@ -104,7 +104,7 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
-			<version>1.18.8</version>
+			<version>1.18.24</version>
 			<scope>provided</scope>
 		</dependency>
 
@@ -116,18 +116,18 @@
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
-			<version>3.9</version>
+			<version>3.12.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.tukaani</groupId>
 			<artifactId>xz</artifactId>
-			<version>1.8</version>
+			<version>1.9</version>
 		</dependency>
 		
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter-engine</artifactId>
-			<version>5.5.2</version>
+			<version>5.9.1</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
