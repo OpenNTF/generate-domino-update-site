@@ -468,12 +468,18 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private List<Path> findEclipsePaths(Path domino) {
 		// Account for various layouts
 		List<Path> eclipsePaths = Stream.of(
-				// macOS Notes client
+				// macOS Notes client < 12
 				domino.resolve("Contents").resolve("MacOS").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				domino.resolve("Contents").resolve("MacOS").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-				// macOS Notes client pointed at Contents/MacOS
+				// macOS Notes client 12
+				domino.resolve("Contents").resolve("Eclipse").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				domino.resolve("Contents").resolve("Eclipse").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// macOS Notes client < 12 pointed at Contents/MacOS
 				domino.resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
 				domino.resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$
+				// macOS Notes client 12 pointed at Contents/MacOS
+				domino.getParent().resolve("Eclipse").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				domino.getParent().resolve("Eclipse").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				// Domino and Windows Notes
 				domino.resolve("osgi").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				domino.resolve("osgi").resolve("rcp").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -511,8 +517,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 				domino.resolve("Contents").resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
 				// All Notes and Domino, including < 12 macOS Notes client pointed at Contents/MacOS
 				domino.resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-				// macOS Notes client pointed at Contents/MacOS
-				domino.getParent().resolve("jvm").resolve("lib").resolve("ext").resolve(jarName) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				// macOS Notes client 12 pointed at Contents/MacOS
+				domino.getParent().resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 		)
 		.filter(Files::exists)
 		.filter(Files::isRegularFile)
