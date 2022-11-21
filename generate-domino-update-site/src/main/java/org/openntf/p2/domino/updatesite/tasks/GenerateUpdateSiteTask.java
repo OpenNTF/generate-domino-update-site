@@ -279,6 +279,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 								attrs.putValue("Bundle-SymbolicName", fragmentId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
 								attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 								attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+								attrs.putValue("Require-Bundle", "com.ibm.notes.java.api,com.ibm.commons,org.eclipse.core.runtime"); //$NON-NLS-1$ //$NON-NLS-2$
 								manifest.write(jos);
 								jos.closeEntry();
 
