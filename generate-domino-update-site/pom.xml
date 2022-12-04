@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.openntf.p2</groupId>
 	<artifactId>generate-domino-update-site</artifactId>
-	<version>4.3.0-SNAPSHOT</version>
+	<version>5.0.0-SNAPSHOT</version>
 	<packaging>maven-plugin</packaging>
 
 	<name>generate-domino-update-site</name>
