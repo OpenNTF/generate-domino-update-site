@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -112,7 +113,17 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionGeneratingPom"), e); //$NON-NLS-1$
 			}
 			
-			processBundle(bundle, bundles, bundlesByName, tempPom);
+			try {
+				processBundle(bundle, bundles, bundlesByName, tempPom);
+			} finally {
+				if(tempPom != null) {
+					try {
+						Files.deleteIfExists(tempPom);
+					} catch (IOException e) {
+						getLog().info(MessageFormat.format("Unable to delete temporary file {0}: {1}", tempPom, e));
+					}
+				}
+			}
 		}
 	}
 	
@@ -176,7 +187,6 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		
 		// Write out the temporary pom
 		Path tempPom = Files.createTempFile(bundle.getArtifactId(), ".pom"); //$NON-NLS-1$
-		tempPom.toFile().deleteOnExit();
 		Files.write(tempPom, NSFODPDomUtil.getXmlString(xml, null).getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
 		
 		return tempPom;
