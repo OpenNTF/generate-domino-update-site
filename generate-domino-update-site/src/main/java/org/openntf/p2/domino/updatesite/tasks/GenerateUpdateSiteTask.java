@@ -42,9 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
@@ -64,7 +62,6 @@ import org.w3c.dom.NodeList;
 
 import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
-import com.ibm.commons.util.io.StreamUtil;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
@@ -269,33 +266,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 						.orElseThrow(() -> new IllegalStateException(Messages.getString("GenerateUpdateSiteTask.unableToFindNapiBundle", destPlugins))); //$NON-NLS-1$
 					
 					// Rewrite the MANIFEST.MF to allow Eclipse to resolve fragment classes
-					{
-						Path tempBundle = Files.createTempFile("com.ibm.domino.napi", ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-						
-						try(
-							InputStream is = Files.newInputStream(napiBundle);
-							JarInputStream jis = new JarInputStream(is);
-							OutputStream os = Files.newOutputStream(tempBundle, StandardOpenOption.TRUNCATE_EXISTING);
-							JarOutputStream jos = new JarOutputStream(os)
-						) {
-							JarEntry sourceEntry;
-							while((sourceEntry = jis.getNextJarEntry()) != null) {
-								jos.putNextEntry(sourceEntry);
-								if("META-INF/MANIFEST.MF".equals(sourceEntry.getName())) { //$NON-NLS-1$
-									// Modify the manifest
-									Manifest napiManifest = new Manifest(jis);
-									napiManifest.getMainAttributes().putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
-									napiManifest.write(jos);
-								} else {
-									// Otherwise, copy cleanly
-									StreamUtil.copyStream(jis, jos);
-								}
-							}
+					try(FileSystem napiFs = NSFODPUtil.openZipPath(napiBundle)) {
+						Path root = napiFs.getPath("/"); //$NON-NLS-1$
+						Path manifestPath = root.resolve("META-INF/MANIFEST.MF"); //$NON-NLS-1$
+						Manifest napiManifest;
+						try(InputStream is = Files.newInputStream(manifestPath)) {
+							napiManifest = new Manifest(is);
 						}
-						
-						Files.delete(napiBundle);
-						Files.move(tempBundle, napiBundle);
-						
+						napiManifest.getMainAttributes().putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
+						try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.TRUNCATE_EXISTING)) {
+							napiManifest.write(os);
+						}
 					}
 					
 					String napiVersion = napiBundle.getFileName().toString().substring("com.ibm.domino.napi_".length()); //$NON-NLS-1$
