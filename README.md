@@ -55,12 +55,14 @@ Add the OpenNTF Maven server to your ~/.m2/settings.xml file. For example:
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:4.2.1:generateUpdateSite \
+$ mvn org.openntf.p2:generate-domino-update-site:5.0.0:generateUpdateSite \
     -Dsrc="/Volumes/C/Program Files/IBM/Domino" \
-    -Ddest="/Users/someuser/Desktop/UpdateSite"
+    -Ddest="/Users/someuser/Desktop/UpdateSite" \
+	-DflattenEmbeds=false # optional
 ```
 - `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino". If unspecified, the Mojo will attempt to find a Domino or Notes installation based on common locations
 - `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite", but it can be anywhere
+- `flattenEmbeds` will look for embedded JARs named with Bundle-ClassPath and expand their contents out into the main bundle
 
 ### Programmatic Use
 
@@ -99,7 +101,7 @@ Additionally, this installs any embedded JARs as attached entities with the `cla
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:mavenizeBundles \
+$ mvn org.openntf.p2:generate-domino-update-site:5.0.0:mavenizeBundles \
     -Dsrc="/Users/someuser/Desktop/UpdateSite" \
     -DgroupId=some.group.id # Optional
     -DoptionalDependencies=false # Optional
@@ -120,7 +122,7 @@ This mojo is similar to the `mavenizeBundles` mojo, but deploys the bundles to a
 It has the same options and behavior as `mavenizeBundles`, with the exception of `localRepositoryPath`. Instead, it requires `deploymentRepository` in the same format as `altDeploymentRepository` in the `maven-install-plugin:deploy` goal. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:4.0.0:mavenizeAndDeployBundles \
+$ mvn org.openntf.p2:generate-domino-update-site:5.0.0:mavenizeAndDeployBundles \
     -Dsrc="/Users/someuser/Desktop/UpdateSite" \
     -DdeploymentRepository=some.repo::default::https://some.repo/path
     -DgroupId=some.group.id # Optional

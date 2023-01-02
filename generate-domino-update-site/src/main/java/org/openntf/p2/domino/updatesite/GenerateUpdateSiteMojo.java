@@ -43,6 +43,15 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	 */
 	@Parameter(property="dest", required=true)
 	private File dest;
+	
+	/**
+	 * Whether embedded JARs should be "flattened" into their containing
+	 * bundles (defaults to false).
+	 * 
+	 * @since 5.0.0
+	 */
+	@Parameter(property="flattenEmbeds", required=false, defaultValue="false")
+	private boolean flattenEmbeds = false;
 
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
@@ -57,7 +66,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 		}
 		Path destDir = dest.toPath();
 		
-		new GenerateUpdateSiteTask(dominoDir, destDir).run();
+		new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds).run();
 	}
 
 	private Path findDominoDir() {
