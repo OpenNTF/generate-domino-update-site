@@ -64,6 +64,8 @@ $ mvn org.openntf.p2:generate-domino-update-site:5.0.0:generateUpdateSite \
 - `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite", but it can be anywhere
 - `flattenEmbeds` will look for embedded JARs named with Bundle-ClassPath and expand their contents out into the main bundle
 
+Note: the `flattenEmbeds` option strips signature files and makes no attempt to merge conflicts between same-named files. Accordingly, the result bundles may not behave the same way as their original versions.
+
 ### Programmatic Use
 
 To incorporate the tool into another program, create a new object of class `org.openntf.p2.domino.updatesite.tasks.GenerateUpdateSiteTask` with the same parameters as via the command line and execute its `run` method (or provide it to any executor that can take a `Runnable`).
