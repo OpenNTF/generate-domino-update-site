@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
+import org.apache.maven.plugin.logging.Log;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.Messages;
@@ -87,12 +88,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private final Path dominoDir;
 	private final Path destDir;
 	private final boolean flattenEmbeds;
+	private final Log log;
 
-	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds) {
+	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, Log log) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
 		this.flattenEmbeds = flattenEmbeds;
+		this.log = log;
 	}
 
 	@Override
@@ -252,7 +255,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 						}
 					}
 				} else {
-					System.out.println(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+					if(log.isInfoEnabled()) {
+						log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+					}
 				}
 			}
 			
@@ -356,7 +361,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {
 		Files.list(sourceDir).forEach(artifact -> {
-			System.out.println(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
+			if(log.isInfoEnabled()) {
+				log.info(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
+			}
 			try {
 				Path destJar = copyOrPack(artifact, destDir);
 				
@@ -547,7 +554,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 					throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.errorWritingSiteXml"), e); //$NON-NLS-1$
 				}
 
-				System.out.println(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
+				if(log.isInfoEnabled()) {
+					log.info(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
+				}
 			} catch (Exception e) {
 				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.exceptionBuildingSiteXml"), e); //$NON-NLS-1$
 			}
@@ -643,8 +652,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 				return NSFODPDomUtil.createDocument(zis);
 			}
 		} catch (IOException e) {
-			System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon")); //$NON-NLS-1$
-			e.printStackTrace();
+			if(log.isWarnEnabled()) {
+				log.warn(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon"), e); //$NON-NLS-1$
+			}
 			return null;
 		}
 	}
@@ -672,11 +682,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 				urlString = PathUtil.concat(urlString, bundleName, '/');
 				URL bundleUrl = new URL(urlString);
 				try(InputStream is = bundleUrl.openStream()) {
-					System.out.println(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
+					if(log.isInfoEnabled()) {
+						log.info(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
+					}
 					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
 				} catch(IOException e) {
-					System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString); //$NON-NLS-1$
-					e.printStackTrace();
+					if(log.isWarnEnabled()) {
+						log.warn(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString, e); //$NON-NLS-1$
+					}
 				}
 			}
 		}
