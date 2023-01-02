@@ -59,6 +59,10 @@ public class DeployMavenizedBundlesMojo extends AbstractMavenizeBundlesMojo {
 			embedFiles.add(embed.getFile().toString());
 			embedClassifiers.add(baseName);
 		}
+		if(bundle.getSource() != null) {
+			embedFiles.add(bundle.getSource().toString());
+			embedClassifiers.add("sources"); //$NON-NLS-1$
+		}
 		
 		String extraFiles = String.join(",", embedFiles); //$NON-NLS-1$
 		String extraClassifiers = String.join(",", embedClassifiers); //$NON-NLS-1$
