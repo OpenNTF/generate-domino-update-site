@@ -458,11 +458,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 						// Do this specially to remove the Bundle-ClassPath header
 						try(InputStream is = Files.newInputStream(file)) {
 							Manifest manifest = new Manifest(is);
-							manifest.getMainAttributes().remove("Bundle-ClassPath"); //$NON-NLS-1$
 							Path target = root.resolve(relativePath);
 							Files.createDirectories(target.getParent());
 							try(OutputStream os = Files.newOutputStream(target, StandardOpenOption.CREATE)) {
-								manifest.write(os);
+								Manifest newManifest = new Manifest();
+								Attributes newAttrs = newManifest.getMainAttributes();
+								manifest.getMainAttributes()
+									.entrySet()
+									.stream()
+									.filter(e -> !"Bundle-ClassPath".equalsIgnoreCase(e.getKey().toString())) //$NON-NLS-1$
+									.forEach(e -> newAttrs.put(e.getKey(), e.getValue()));
+								newManifest.write(os);
 							}
 						}
 						return FileVisitResult.CONTINUE;
