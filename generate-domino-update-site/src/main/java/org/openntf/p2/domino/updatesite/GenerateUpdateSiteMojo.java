@@ -66,7 +66,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 		}
 		Path destDir = dest.toPath();
 		
-		new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds).run();
+		new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, getLog()).run();
 	}
 
 	private Path findDominoDir() {
