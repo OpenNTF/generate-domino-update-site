@@ -21,6 +21,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.text.MessageFormat;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -169,7 +170,7 @@ public class GenerateP2MetadataTask implements Runnable {
 				downloadSize.setAttribute("name", "download.size"); //$NON-NLS-1$ //$NON-NLS-2$
 				downloadSize.setAttribute("value", String.valueOf(Files.size(plugin))); //$NON-NLS-1$
 			} catch(Exception e) {
-				throw new RuntimeException(e);
+				throw new RuntimeException(MessageFormat.format("Encountered exception processing bundle {0}", plugin), e);
 			}
 		});
 		
@@ -522,7 +523,7 @@ public class GenerateP2MetadataTask implements Runnable {
 					}
 				}
 			} catch(Exception e) {
-				throw new RuntimeException(e);
+				throw new RuntimeException(MessageFormat.format("Encountered exception processing bundle {0}", plugin), e);
 			}
 		});
 		
