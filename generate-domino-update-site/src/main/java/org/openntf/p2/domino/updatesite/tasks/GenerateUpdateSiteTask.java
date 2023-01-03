@@ -67,16 +67,14 @@ import com.ibm.commons.util.StringUtil;
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
 	private static final Pattern BUNDLE_FILENAME_PATTERN = FEATURE_FILENAME_PATTERN;
-	private static final Set<String> EXCLUDED_FILENAMES = new HashSet<>();
+	private static final Set<Pattern> EXCLUDED_FILENAMES = new HashSet<>();
 	static {
 		EXCLUDED_FILENAMES.addAll(Arrays.asList(
-			".DS_STORE", //$NON-NLS-1$
+			Pattern.compile("^\\.DS_STORE$"), //$NON-NLS-1$
 			
 			// Signature manifests will be invalid
-			"IBM_WPLC.SF", //$NON-NLS-1$
-			"IBM_WPLC.RSA", //$NON-NLS-1$
-			"SUNCERT.RSA", //$NON-NLS-1$
-			"SUNCERT.SF" //$NON-NLS-1$
+			Pattern.compile("^.+\\.SF$"), //$NON-NLS-1$
+			Pattern.compile("^.+\\.RSA$") //$NON-NLS-1$
 		));
 	}
 	
@@ -383,22 +381,30 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private Path copyOrPack(Path source, Path destDir) throws Exception {
 		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
 			// Check for a MANIFEST.MF inside the Jar
-			String classpath = null;
-			try(JarFile jarFile = new JarFile(source.toFile())) {
-				if(jarFile.getEntry("META-INF/MANIFEST.MF") == null) { //$NON-NLS-1$
+			Path dest = destDir.resolve(source.getFileName());
+			try(FileSystem jarFs = NSFODPUtil.openZipPath(source)) {
+				Path root = jarFs.getPath("/"); //$NON-NLS-1$
+				Path manifestMf = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+				if(!Files.exists(manifestMf)) {
 					return null;
 				}
 				
 				// Check for a Bundle-ClassPath for embeds
-				Attributes attrs = jarFile.getManifest().getMainAttributes();
-				classpath = attrs.getValue("Bundle-ClassPath"); //$NON-NLS-1$
-			}
-
-			Path dest = destDir.resolve(source.getFileName());
-			if(this.flattenEmbeds && StringUtil.isNotEmpty(classpath)) {
-				// Perform a complex copy if there are embeds to flatten
-			} else {
-				Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+				Manifest jarManifest;
+				try(InputStream is = Files.newInputStream(manifestMf)) {
+					jarManifest = new Manifest(is);
+				}
+				Attributes attrs = jarManifest.getMainAttributes();
+				String classpath = attrs.getValue("Bundle-ClassPath"); //$NON-NLS-1$
+				
+				if(this.flattenEmbeds && StringUtil.isNotEmpty(classpath)) {
+					// Perform a complex copy if there are embeds to flatten
+					Set<String> embeds = new HashSet<>();
+					embeds.addAll(Arrays.asList(StringUtil.splitString(classpath, ',')));
+					zipFolder(jarFs.getPath("/"), dest, embeds); //$NON-NLS-1$
+				} else {
+					zipFolder(jarFs.getPath("/"), dest, Collections.emptySet()); //$NON-NLS-1$
+				}
 			}
 			return dest;
 		} else if (Files.isDirectory(source)) {
@@ -437,7 +443,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
 				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 					String relativePath = sourceFolderPath.relativize(file).toString().replace(File.separatorChar, '/');
-					if(EXCLUDED_FILENAMES.contains(file.getFileName().toString())) {
+					if(EXCLUDED_FILENAMES.stream().anyMatch(p -> p.matcher(file.getFileName().toString()).matches())) {
 						// skip
 						return FileVisitResult.CONTINUE;
 					}
@@ -455,6 +461,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 									.entrySet()
 									.stream()
 									.filter(e -> !"Bundle-ClassPath".equalsIgnoreCase(e.getKey().toString())) //$NON-NLS-1$
+									.filter(e -> !("Name".equalsIgnoreCase(e.getKey().toString()) || "SHA-256-Digest".equals(e.getKey().toString()))) //$NON-NLS-1$ //$NON-NLS-2$
 									.forEach(e -> newAttrs.put(e.getKey(), e.getValue()));
 								newManifest.write(os);
 							}
@@ -721,7 +728,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 		@Override
 		public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
-			if(EXCLUDED_FILENAMES.contains(file.getFileName().toString())) {
+			if(EXCLUDED_FILENAMES.stream().anyMatch(p -> p.matcher(file.getFileName().toString()).matches())) {
 				// skip
 				return FileVisitResult.CONTINUE;
 			} else if("MANIFEST.MF".equals(file.getFileName().toString())) { //$NON-NLS-1$
