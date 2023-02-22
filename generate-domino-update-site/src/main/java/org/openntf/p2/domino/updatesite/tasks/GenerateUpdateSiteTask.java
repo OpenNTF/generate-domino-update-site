@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2022 Jesse Gallagher
+ * Copyright © 2018-2023 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.FileSystem;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,14 +32,17 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
@@ -46,8 +50,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
+import org.apache.maven.plugin.logging.Log;
+import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.Messages;
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
@@ -58,11 +63,20 @@ import org.w3c.dom.NodeList;
 
 import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
-import com.ibm.commons.util.io.StreamUtil;
 
 public class GenerateUpdateSiteTask implements Runnable {
 	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
 	private static final Pattern BUNDLE_FILENAME_PATTERN = FEATURE_FILENAME_PATTERN;
+	private static final Set<Pattern> EXCLUDED_FILENAMES = new HashSet<>();
+	static {
+		EXCLUDED_FILENAMES.addAll(Arrays.asList(
+			Pattern.compile("^\\.DS_STORE$"), //$NON-NLS-1$
+			
+			// Signature manifests will be invalid
+			Pattern.compile("^.+\\.SF$"), //$NON-NLS-1$
+			Pattern.compile("^.+\\.RSA$") //$NON-NLS-1$
+		));
+	}
 	
 	/**
 	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 to current (11.0.1).
@@ -71,11 +85,15 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private final Path dominoDir;
 	private final Path destDir;
+	private final boolean flattenEmbeds;
+	private final Log log;
 
-	public GenerateUpdateSiteTask(Path dominoDir, Path destDir) {
+	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, Log log) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
+		this.flattenEmbeds = flattenEmbeds;
+		this.log = log;
 	}
 
 	@Override
@@ -150,25 +168,36 @@ public class GenerateUpdateSiteTask implements Runnable {
 				{
 					String fragmentId = "com.ibm.notes.java.api.win32.linux"; //$NON-NLS-1$
 					Path plugin = destPlugins.resolve(fragmentId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-						try (JarOutputStream jos = new JarOutputStream(fos)) {
-							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
+					
+					try(FileSystem zip = NSFODPUtil.openZipPath(plugin)) {
+						Path root = zip.getPath("/"); //$NON-NLS-1$
+						// Write the manifest file to declare it a fragment
+						Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+						Files.createDirectories(manifestPath.getParent());
+						try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.CREATE)) {
 							Manifest manifest = new Manifest();
 							Attributes attrs = manifest.getMainAttributes();
 							attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
-							attrs.putValue("Bundle-ClassPath", "Notes.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							if(!this.flattenEmbeds) {
+								attrs.putValue("Bundle-ClassPath", "Notes.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							}
 							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Fragment-Host", "com.ibm.notes.java.api"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Name", "Notes Java API Windows and Linux Fragment"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-SymbolicName", fragmentId + ";singleton:=true"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
-							manifest.write(jos);
-							jos.closeEntry();
-
-							jos.putNextEntry(new ZipEntry("Notes.jar")); //$NON-NLS-1$
-							Files.copy(notesJar, jos);
-							jos.closeEntry();
+							manifest.write(os);
+						}
+						
+						// Either copy in the contents of the source or just bring in the JAR outright
+						if(this.flattenEmbeds) {
+							try(FileSystem notesFs = NSFODPUtil.openZipPath(notesJar)) {
+								Path notesRoot = notesFs.getPath("/"); //$NON-NLS-1$
+								copyBundleEmbed(notesRoot, root);
+							}
+						} else {
+							Files.copy(notesJar, root.resolve("Notes.jar")); //$NON-NLS-1$
 						}
 					}
 				}
@@ -180,19 +209,23 @@ public class GenerateUpdateSiteTask implements Runnable {
 				if(xspBootstrap.isPresent()) {
 					String bundleId = "com.ibm.xsp.http.bootstrap"; //$NON-NLS-1$
 					Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-					try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-						try (JarOutputStream jos = new JarOutputStream(fos)) {
-							jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
+					try(FileSystem zip = NSFODPUtil.openZipPath(plugin)) {
+						Path root = zip.getPath("/"); //$NON-NLS-1$
+						// Write the manifest file to declare it a fragment
+						Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+						Files.createDirectories(manifestPath.getParent());
+						try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.CREATE)) {
 							Manifest manifest = new Manifest();
 							Attributes attrs = manifest.getMainAttributes();
 							attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
-							attrs.putValue("Bundle-ClassPath", "xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							if(!this.flattenEmbeds) {
+								attrs.putValue("Bundle-ClassPath", "xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+							}
 							attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-Name", "XSP HTTP Bootstrap"); //$NON-NLS-1$ //$NON-NLS-2$
 							attrs.putValue("Bundle-SymbolicName", bundleId); //$NON-NLS-1$
 							attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 							attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
-							
 							// Find the packages to export
 							try (JarFile notesJarFile = new JarFile(xspBootstrap.get().toFile())) {
 								String exports = notesJarFile.stream()
@@ -206,17 +239,23 @@ public class GenerateUpdateSiteTask implements Runnable {
 										.collect(Collectors.joining(",")); //$NON-NLS-1$
 								attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 							}
-							
-							manifest.write(jos);
-							jos.closeEntry();
-
-							jos.putNextEntry(new ZipEntry("xsp.http.bootstrap.jar")); //$NON-NLS-1$
-							Files.copy(xspBootstrap.get(), jos);
-							jos.closeEntry();
+							manifest.write(os);
+						}
+						
+						// Either copy in the contents of the source or just bring in the JAR outright
+						if(this.flattenEmbeds) {
+							try(FileSystem notesFs = NSFODPUtil.openZipPath(xspBootstrap.get())) {
+								Path notesRoot = notesFs.getPath("/"); //$NON-NLS-1$
+								copyBundleEmbed(notesRoot, root);
+							}
+						} else {
+							Files.copy(xspBootstrap.get(), root.resolve("xsp.http.bootstrap.jar")); //$NON-NLS-1$
 						}
 					}
 				} else {
-					System.out.println(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+					if(log.isInfoEnabled()) {
+						log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+					}
 				}
 			}
 			
@@ -230,33 +269,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 						.orElseThrow(() -> new IllegalStateException(Messages.getString("GenerateUpdateSiteTask.unableToFindNapiBundle", destPlugins))); //$NON-NLS-1$
 					
 					// Rewrite the MANIFEST.MF to allow Eclipse to resolve fragment classes
-					{
-						Path tempBundle = Files.createTempFile("com.ibm.domino.napi", ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-						
-						try(
-							InputStream is = Files.newInputStream(napiBundle);
-							JarInputStream jis = new JarInputStream(is);
-							OutputStream os = Files.newOutputStream(tempBundle, StandardOpenOption.TRUNCATE_EXISTING);
-							JarOutputStream jos = new JarOutputStream(os)
-						) {
-							JarEntry sourceEntry;
-							while((sourceEntry = jis.getNextJarEntry()) != null) {
-								jos.putNextEntry(sourceEntry);
-								if("META-INF/MANIFEST.MF".equals(sourceEntry.getName())) { //$NON-NLS-1$
-									// Modify the manifest
-									Manifest napiManifest = new Manifest(jis);
-									napiManifest.getMainAttributes().putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
-									napiManifest.write(jos);
-								} else {
-									// Otherwise, copy cleanly
-									StreamUtil.copyStream(jis, jos);
-								}
-							}
+					try(FileSystem napiFs = NSFODPUtil.openZipPath(napiBundle)) {
+						Path root = napiFs.getPath("/"); //$NON-NLS-1$
+						Path manifestPath = root.resolve("META-INF/MANIFEST.MF"); //$NON-NLS-1$
+						Manifest napiManifest;
+						try(InputStream is = Files.newInputStream(manifestPath)) {
+							napiManifest = new Manifest(is);
 						}
-						
-						Files.delete(napiBundle);
-						Files.move(tempBundle, napiBundle);
-						
+						napiManifest.getMainAttributes().putValue("Eclipse-ExtensibleAPI", "true"); //$NON-NLS-1$ //$NON-NLS-2$
+						try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.TRUNCATE_EXISTING)) {
+							napiManifest.write(os);
+						}
 					}
 					
 					String napiVersion = napiBundle.getFileName().toString().substring("com.ibm.domino.napi_".length()); //$NON-NLS-1$
@@ -266,13 +289,18 @@ public class GenerateUpdateSiteTask implements Runnable {
 					{
 						String fragmentId = "com.ibm.domino.napi.impl"; //$NON-NLS-1$
 						Path plugin = destPlugins.resolve(fragmentId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-						try (OutputStream fos = Files.newOutputStream(plugin, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-							try (JarOutputStream jos = new JarOutputStream(fos)) {
-								jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF")); //$NON-NLS-1$
+						try(FileSystem zip = NSFODPUtil.openZipPath(plugin)) {
+							Path root = zip.getPath("/"); //$NON-NLS-1$
+							// Write the manifest file to declare it a fragment
+							Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+							Files.createDirectories(manifestPath.getParent());
+							try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.CREATE)) {
 								Manifest manifest = new Manifest();
 								Attributes attrs = manifest.getMainAttributes();
 								attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
-								attrs.putValue("Bundle-ClassPath", "lwpd.domino.napi.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+								if(!this.flattenEmbeds) {
+									attrs.putValue("Bundle-ClassPath", "lwpd.domino.napi.jar"); //$NON-NLS-1$ //$NON-NLS-2$
+								}
 								attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
 								attrs.putValue("Fragment-Host", "com.ibm.domino.napi"); //$NON-NLS-1$ //$NON-NLS-2$
 								attrs.putValue("Bundle-Name", "Api Plug-in Implementation JAR"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -280,12 +308,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 								attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
 								attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
 								attrs.putValue("Require-Bundle", "com.ibm.notes.java.api,com.ibm.commons,org.eclipse.core.runtime"); //$NON-NLS-1$ //$NON-NLS-2$
-								manifest.write(jos);
-								jos.closeEntry();
-
-								jos.putNextEntry(new ZipEntry("lwpd.domino.napi.jar")); //$NON-NLS-1$
-								Files.copy(napiJar, jos);
-								jos.closeEntry();
+								manifest.write(os);
+							}
+							
+							// Either copy in the contents of the source or just bring in the JAR outright
+							if(this.flattenEmbeds) {
+								try(FileSystem notesFs = NSFODPUtil.openZipPath(napiJar)) {
+									Path notesRoot = notesFs.getPath("/"); //$NON-NLS-1$
+									copyBundleEmbed(notesRoot, root);
+								}
+							} else {
+								Files.copy(napiJar, root.resolve("lwpd.domino.napi.jar")); //$NON-NLS-1$
 							}
 						}
 					}
@@ -326,7 +359,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {
 		Files.list(sourceDir).forEach(artifact -> {
-			System.out.println(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
+			if(log.isInfoEnabled()) {
+				log.info(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
+			}
 			try {
 				Path destJar = copyOrPack(artifact, destDir);
 				
@@ -346,45 +381,115 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private Path copyOrPack(Path source, Path destDir) throws Exception {
 		if (Files.isRegularFile(source) && source.getFileName().toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
 			// Check for a MANIFEST.MF inside the Jar
-			try(JarFile jarFile = new JarFile(source.toFile())) {
-				if(jarFile.getEntry("META-INF/MANIFEST.MF") == null) { //$NON-NLS-1$
+			Path dest = destDir.resolve(source.getFileName());
+			try(FileSystem jarFs = NSFODPUtil.openZipPath(source)) {
+				Path root = jarFs.getPath("/"); //$NON-NLS-1$
+				Path manifestMf = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+				if(!Files.exists(manifestMf)) {
 					return null;
 				}
+				
+				// Check for a Bundle-ClassPath for embeds
+				Manifest jarManifest;
+				try(InputStream is = Files.newInputStream(manifestMf)) {
+					jarManifest = new Manifest(is);
+				}
+				Attributes attrs = jarManifest.getMainAttributes();
+				String classpath = attrs.getValue("Bundle-ClassPath"); //$NON-NLS-1$
+				
+				if(this.flattenEmbeds && StringUtil.isNotEmpty(classpath)) {
+					// Perform a complex copy if there are embeds to flatten
+					Set<String> embeds = new HashSet<>();
+					embeds.addAll(Arrays.asList(StringUtil.splitString(classpath, ',')));
+					zipFolder(jarFs.getPath("/"), dest, embeds); //$NON-NLS-1$
+				} else {
+					zipFolder(jarFs.getPath("/"), dest, Collections.emptySet()); //$NON-NLS-1$
+				}
 			}
-			
-			Path dest = destDir.resolve(source.getFileName());
-			Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
 			return dest;
 		} else if (Files.isDirectory(source)) {
 			// Check for a MANIFEST.MF in a subdirectory
+			Path manifestPath = source.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
 			if(!Files.isRegularFile(source.resolve("META-INF").resolve("MANIFEST.MF"))) { //$NON-NLS-1$ //$NON-NLS-2$
 				return null;
 			}
+
+			// Check for a Bundle-ClassPath for embeds
+			String classpath = null;
+			try(InputStream is = Files.newInputStream(manifestPath)) {
+				Manifest manifest = new Manifest(is);
+				Attributes attrs = manifest.getMainAttributes();
+				classpath = attrs.getValue("Bundle-ClassPath"); //$NON-NLS-1$
+			}
 			
+
 			// Must be an unpacked plugin
 			Path destPlugin = destDir.resolve(source.getFileName() + ".jar"); //$NON-NLS-1$
-			zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath());
+			if(this.flattenEmbeds && StringUtil.isNotEmpty(classpath)) {
+				Set<String> embeds = new HashSet<>();
+				embeds.addAll(Arrays.asList(StringUtil.splitString(classpath, ',')));
+				zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath(), embeds);
+			} else {
+				zipFolder(source.toAbsolutePath(), destPlugin.toAbsolutePath(), Collections.emptySet());
+			}
 			return destPlugin;
 		}
 		return null;
 	}
 
-	private void zipFolder(Path sourceFolderPath, Path zipPath) throws Exception {
-		try(OutputStream fos = Files.newOutputStream(zipPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-			try(ZipOutputStream zos = new ZipOutputStream(fos)) {
-				Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
-					public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-						String relativePath = sourceFolderPath.relativize(file).toString().replace(File.separatorChar, '/');
-						// Strip signature files, since they'll no longer quite match
-						if (!(relativePath.endsWith(".RSA") || relativePath.endsWith(".SF"))) { //$NON-NLS-1$ //$NON-NLS-2$
-							zos.putNextEntry(new ZipEntry(relativePath));
-							Files.copy(file, zos);
-							zos.closeEntry();
+	private void zipFolder(Path sourceFolderPath, Path zipPath, Collection<String> embeds) throws Exception {
+		try(FileSystem fs = NSFODPUtil.openZipPath(zipPath)) {
+			Path root = fs.getPath("/"); //$NON-NLS-1$
+			Files.walkFileTree(sourceFolderPath, new SimpleFileVisitor<Path>() {
+				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+					String relativePath = sourceFolderPath.relativize(file).toString().replace(File.separatorChar, '/');
+					if(EXCLUDED_FILENAMES.stream().anyMatch(p -> p.matcher(file.getFileName().toString()).matches())) {
+						// skip
+						return FileVisitResult.CONTINUE;
+					}
+					
+					if(GenerateUpdateSiteTask.this.flattenEmbeds && "MANIFEST.MF".equals(file.getFileName().toString())) { //$NON-NLS-1$
+						// Do this specially to remove the Bundle-ClassPath header
+						try(InputStream is = Files.newInputStream(file)) {
+							Manifest manifest = new Manifest(is);
+							Path target = root.resolve(relativePath);
+							Files.createDirectories(target.getParent());
+							try(OutputStream os = Files.newOutputStream(target, StandardOpenOption.CREATE)) {
+								Manifest newManifest = new Manifest();
+								Attributes newAttrs = newManifest.getMainAttributes();
+								manifest.getMainAttributes()
+									.entrySet()
+									.stream()
+									.filter(e -> !"Bundle-ClassPath".equalsIgnoreCase(e.getKey().toString())) //$NON-NLS-1$
+									.filter(e -> !("Name".equalsIgnoreCase(e.getKey().toString()) || "SHA-256-Digest".equals(e.getKey().toString()))) //$NON-NLS-1$ //$NON-NLS-2$
+									.forEach(e -> newAttrs.put(e.getKey(), e.getValue()));
+								newManifest.write(os);
+							}
 						}
 						return FileVisitResult.CONTINUE;
 					}
-				});
-			}
+					
+					if(embeds.contains(relativePath)) {
+						// Make a temp copy of the file in case it's inside a JAR
+						Path tempEmbed = Files.createTempFile(file.getFileName().toString(), ".jar"); //$NON-NLS-1$
+						Files.copy(file, tempEmbed, StandardCopyOption.REPLACE_EXISTING);
+						try {
+							try(FileSystem tempFs = NSFODPUtil.openZipPath(tempEmbed)) {
+								copyBundleEmbed(tempFs.getPath("/"), root); //$NON-NLS-1$
+							}
+						} finally {
+							Files.deleteIfExists(tempEmbed);
+						}
+					} else {
+						Path target = root.resolve(relativePath);
+						if(!Files.exists(target.getParent())) {
+							Files.createDirectories(target.getParent());
+						}
+			 			Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+					}
+					return FileVisitResult.CONTINUE;
+				}
+			});
 		}
 	}
 	
@@ -456,7 +561,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 					throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.errorWritingSiteXml"), e); //$NON-NLS-1$
 				}
 
-				System.out.println(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
+				if(log.isInfoEnabled()) {
+					log.info(StringUtil.format(Messages.getString("GenerateUpdateSiteTask.wroteSiteXmlTo"), output.toAbsolutePath())); //$NON-NLS-1$
+				}
 			} catch (Exception e) {
 				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.exceptionBuildingSiteXml"), e); //$NON-NLS-1$
 			}
@@ -552,8 +659,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 				return NSFODPDomUtil.createDocument(zis);
 			}
 		} catch (IOException e) {
-			System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon")); //$NON-NLS-1$
-			e.printStackTrace();
+			if(log.isWarnEnabled()) {
+				log.warn(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon"), e); //$NON-NLS-1$
+			}
 			return null;
 		}
 	}
@@ -581,13 +689,66 @@ public class GenerateUpdateSiteTask implements Runnable {
 				urlString = PathUtil.concat(urlString, bundleName, '/');
 				URL bundleUrl = new URL(urlString);
 				try(InputStream is = bundleUrl.openStream()) {
-					System.out.println(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
+					if(log.isInfoEnabled()) {
+						log.info(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
+					}
 					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
 				} catch(IOException e) {
-					System.err.println(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString); //$NON-NLS-1$
-					e.printStackTrace();
+					if(log.isWarnEnabled()) {
+						log.warn(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString, e); //$NON-NLS-1$
+					}
 				}
 			}
+		}
+	}
+	
+	public static void copyBundleEmbed(Path source, Path dest) throws IOException {
+		Files.walkFileTree(source, new CopyEmbedVisitor(dest));
+	}
+	
+	private static class CopyEmbedVisitor extends SimpleFileVisitor<Path> {
+
+		
+		private final Path targetPath;
+		private Path sourcePath = null;
+
+		public CopyEmbedVisitor(Path targetPath) {
+			this.targetPath = targetPath;
+		}
+
+		@Override
+		public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException {
+			if (sourcePath == null) {
+				sourcePath = dir;
+			} else {
+				Files.createDirectories(targetPath.resolve(sourcePath.relativize(dir).toString()));
+			}
+			return FileVisitResult.CONTINUE;
+		}
+
+		@Override
+		public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+			if(EXCLUDED_FILENAMES.stream().anyMatch(p -> p.matcher(file.getFileName().toString()).matches())) {
+				// skip
+				return FileVisitResult.CONTINUE;
+			} else if("MANIFEST.MF".equals(file.getFileName().toString())) { //$NON-NLS-1$
+				// skip
+				return FileVisitResult.CONTINUE;
+			}
+			
+			Path target = targetPath.resolve(sourcePath.relativize(file).toString());
+			if(Files.exists(target)) {
+				// TODO consider merging META-INF/services files, though no duplicates
+				//   exist in the distribution as of 12.0.2
+				
+				// skip
+				return FileVisitResult.CONTINUE;
+			}
+			if(!Files.exists(target.getParent())) {
+				Files.createDirectories(target.getParent());
+			}
+ 			Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+			return FileVisitResult.CONTINUE;
 		}
 	}
 }

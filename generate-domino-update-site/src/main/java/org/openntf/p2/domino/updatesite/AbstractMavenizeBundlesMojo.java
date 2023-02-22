@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2022 Jesse Gallagher
+ * Copyright © 2018-2023 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.StringReader;
+import java.io.UncheckedIOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -53,6 +55,7 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.osgi.util.ManifestElement;
+import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.model.BundleEmbed;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
@@ -110,6 +113,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 			
 			Files.list(bundlesDir)
 				.filter(path -> path.toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
+				.filter(path -> !isSourceBundle(path))
 				.map(this::toInfo)
 				.filter(Objects::nonNull)
 				.forEach(b -> {
@@ -384,7 +388,17 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				}
 			}
 			
-			return new BundleInfo(name, vendor, artifactId, version, tempFile.toAbsolutePath().toString(), requireEntries, embeds);	
+			// Check for a source bundle
+			Path source = null;
+			Path potentialSource = path.getParent().resolve(artifactId + ".source_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+			if(Files.isRegularFile(potentialSource)) {
+				// Check if it's marked as a source bundle
+				if(isSourceBundle(potentialSource)) {
+					source = potentialSource;
+				}
+			}
+			
+			return new BundleInfo(name, vendor, artifactId, version, tempFile.toAbsolutePath().toString(), requireEntries, embeds, source);	
 		} finally {
 			jarFile.close();
 		}
@@ -392,5 +406,28 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 
 	public static String toEmbedClassifierName(String embedName) {
 		return embedName.substring(0, embedName.lastIndexOf('.')).replace('/', '$');
+	}
+	
+	private static final boolean isSourceBundle(Path path) {
+		if(!path.getFileName().toString().contains(".source_")) { //$NON-NLS-1$
+			return false;
+		}
+		
+		try(FileSystem sourceFs = NSFODPUtil.openZipPath(path)) {
+			Path root = sourceFs.getPath("/"); //$NON-NLS-1$
+			Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+			if(Files.exists(manifestPath)) {
+				Manifest sourceManifest;
+				try(InputStream is = Files.newInputStream(manifestPath)) {
+					sourceManifest = new Manifest(is);
+				}
+				String sourceBundle = sourceManifest.getMainAttributes().getValue("Eclipse-SourceBundle"); //$NON-NLS-1$
+				return StringUtil.isNotEmpty(sourceBundle);
+			}
+		} catch(IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		
+		return false;
 	}
 }

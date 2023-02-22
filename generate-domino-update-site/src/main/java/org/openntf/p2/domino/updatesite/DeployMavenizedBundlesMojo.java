@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2022 Jesse Gallagher
+ * Copyright © 2018-2023 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +73,10 @@ public class DeployMavenizedBundlesMojo extends AbstractMavenizeBundlesMojo {
 			String baseName = toEmbedClassifierName(embed.getName());
 			embedFiles.add(embed.getFile().toString());
 			embedClassifiers.add(baseName);
+		}
+		if(bundle.getSource() != null) {
+			embedFiles.add(bundle.getSource().toString());
+			embedClassifiers.add("sources"); //$NON-NLS-1$
 		}
 		
 		String extraFiles = String.join(",", embedFiles); //$NON-NLS-1$
