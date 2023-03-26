@@ -626,7 +626,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 				// All Notes and Domino, including < 12 macOS Notes client pointed at Contents/MacOS
 				domino.resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				// macOS Notes client 12 pointed at Contents/MacOS
-				domino.getParent().resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				domino.getParent().resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// Move from jvm/lib/ext to ndext
+				domino.resolve("ndext").resolve(jarName) //$NON-NLS-1$
 		)
 		.filter(Files::exists)
 		.filter(Files::isRegularFile)
