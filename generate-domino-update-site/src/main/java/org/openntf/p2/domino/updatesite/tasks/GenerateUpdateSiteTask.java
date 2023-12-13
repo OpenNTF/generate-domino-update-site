@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -553,10 +554,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 					}
 				});
 
-				String xml = NSFODPDomUtil.getXmlString(doc, null);
 				Path output = f.resolve("site.xml"); //$NON-NLS-1$
-				try (BufferedWriter w = Files.newBufferedWriter(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-					w.write(xml);
+				try (BufferedWriter w = Files.newBufferedWriter(output, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+					NSFODPDomUtil.serialize(w, doc, null);
 				} catch (IOException e) {
 					throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.errorWritingSiteXml"), e); //$NON-NLS-1$
 				}
