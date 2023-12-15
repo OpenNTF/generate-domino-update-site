@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2020 Jesse Gallagher
+ * Copyright © 2018-2023 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,13 @@ package org.openntf.p2.domino.updatesite.tasks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.text.MessageFormat;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -54,16 +58,20 @@ public class GenerateP2MetadataTask implements Runnable {
 		try {
 			Document artifactsXml = createArtifactsXml();
 			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
-				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os, StandardCharsets.UTF_8)) {
 					zos.putNextEntry(new ZipEntry("artifacts.xml")); //$NON-NLS-1$
-					NSFODPDomUtil.serialize(zos, artifactsXml, null);
+					try(Writer w = new OutputStreamWriter(zos, StandardCharsets.UTF_8)) {
+						NSFODPDomUtil.serialize(w, artifactsXml, null);
+					}
 				}
 			}
 			Document contentXml = createContentXml();
 			try(OutputStream os = Files.newOutputStream(dest.resolve("content.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
-				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os, StandardCharsets.UTF_8)) {
 					zos.putNextEntry(new ZipEntry("content.xml")); //$NON-NLS-1$
-					NSFODPDomUtil.serialize(zos, contentXml, null);	
+					try(Writer w = new OutputStreamWriter(zos, StandardCharsets.UTF_8)) {
+						NSFODPDomUtil.serialize(w, contentXml, null);	
+					}
 				}
 			}
 			
@@ -169,7 +177,7 @@ public class GenerateP2MetadataTask implements Runnable {
 				downloadSize.setAttribute("name", "download.size"); //$NON-NLS-1$ //$NON-NLS-2$
 				downloadSize.setAttribute("value", String.valueOf(Files.size(plugin))); //$NON-NLS-1$
 			} catch(Exception e) {
-				throw new RuntimeException(e);
+				throw new RuntimeException(MessageFormat.format("Encountered exception processing bundle {0}", plugin), e);
 			}
 		});
 		
@@ -522,7 +530,7 @@ public class GenerateP2MetadataTask implements Runnable {
 					}
 				}
 			} catch(Exception e) {
-				throw new RuntimeException(e);
+				throw new RuntimeException(MessageFormat.format("Encountered exception processing bundle {0}", plugin), e);
 			}
 		});
 		

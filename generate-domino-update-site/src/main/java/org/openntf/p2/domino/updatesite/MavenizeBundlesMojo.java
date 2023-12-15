@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2020 Jesse Gallagher
+ * Copyright © 2018-2023 Jesse Gallagher
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,6 +93,37 @@ public class MavenizeBundlesMojo extends AbstractMavenizeBundlesMojo {
 				element("version", bundle.getVersion()), //$NON-NLS-1$
 				element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
 				element("classifier", baseName) //$NON-NLS-1$
+			));
+			if(this.localRepositoryPath != null) {
+				element("localRepositoryPath", this.localRepositoryPath.toString()); //$NON-NLS-1$
+			}
+			executeMojo(
+				plugin(
+					groupId("org.apache.maven.plugins"), //$NON-NLS-1$
+					artifactId("maven-install-plugin"), //$NON-NLS-1$
+					version("2.5.2") //$NON-NLS-1$
+				),
+				goal("install-file"), //$NON-NLS-1$
+				configuration(
+					elements.toArray(new MojoExecutor.Element[elements.size()])
+				),
+				executionEnvironment(
+					mavenProject,
+	        		mavenSession,
+	        		pluginManager
+				)
+			);
+		}
+		
+		// Same goes for the source bundle if present
+		if(bundle.getSource() != null) {
+			List<MojoExecutor.Element> elements = new ArrayList<>(Arrays.asList(
+				element("file", bundle.getSource().toString()), //$NON-NLS-1$
+				element("groupId", groupId), //$NON-NLS-1$
+				element("artifactId", bundle.getArtifactId()), //$NON-NLS-1$
+				element("version", bundle.getVersion()), //$NON-NLS-1$
+				element("packaging", "jar"), //$NON-NLS-1$ //$NON-NLS-2$
+				element("classifier", "sources") //$NON-NLS-1$ //$NON-NLS-2$
 			));
 			if(this.localRepositoryPath != null) {
 				element("localRepositoryPath", this.localRepositoryPath.toString()); //$NON-NLS-1$

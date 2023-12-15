@@ -1,3 +1,18 @@
+/**
+ * Copyright © 2018-2023 Jesse Gallagher
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.openntf.p2.domino.updatesite;
 
 import java.io.File;
@@ -5,11 +20,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.StringReader;
+import java.io.UncheckedIOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -37,6 +55,7 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.osgi.util.ManifestElement;
+import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.model.BundleEmbed;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
@@ -94,6 +113,7 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 			
 			Files.list(bundlesDir)
 				.filter(path -> path.toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
+				.filter(path -> !isSourceBundle(path))
 				.map(this::toInfo)
 				.filter(Objects::nonNull)
 				.forEach(b -> {
@@ -112,7 +132,17 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				throw new MojoExecutionException(Messages.getString("AbstractMavenizeBundlesMojo.exceptionGeneratingPom"), e); //$NON-NLS-1$
 			}
 			
-			processBundle(bundle, bundles, bundlesByName, tempPom);
+			try {
+				processBundle(bundle, bundles, bundlesByName, tempPom);
+			} finally {
+				if(tempPom != null) {
+					try {
+						Files.deleteIfExists(tempPom);
+					} catch (IOException e) {
+						getLog().info(MessageFormat.format("Unable to delete temporary file {0}: {1}", tempPom, e));
+					}
+				}
+			}
 		}
 	}
 	
@@ -176,7 +206,6 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 		
 		// Write out the temporary pom
 		Path tempPom = Files.createTempFile(bundle.getArtifactId(), ".pom"); //$NON-NLS-1$
-		tempPom.toFile().deleteOnExit();
 		Files.write(tempPom, NSFODPDomUtil.getXmlString(xml, null).getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
 		
 		return tempPom;
@@ -359,7 +388,17 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 				}
 			}
 			
-			return new BundleInfo(name, vendor, artifactId, version, tempFile.toAbsolutePath().toString(), requireEntries, embeds);	
+			// Check for a source bundle
+			Path source = null;
+			Path potentialSource = path.getParent().resolve(artifactId + ".source_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+			if(Files.isRegularFile(potentialSource)) {
+				// Check if it's marked as a source bundle
+				if(isSourceBundle(potentialSource)) {
+					source = potentialSource;
+				}
+			}
+			
+			return new BundleInfo(name, vendor, artifactId, version, tempFile.toAbsolutePath().toString(), requireEntries, embeds, source);	
 		} finally {
 			jarFile.close();
 		}
@@ -367,5 +406,28 @@ public abstract class AbstractMavenizeBundlesMojo extends AbstractMojo {
 
 	public static String toEmbedClassifierName(String embedName) {
 		return embedName.substring(0, embedName.lastIndexOf('.')).replace('/', '$');
+	}
+	
+	private static final boolean isSourceBundle(Path path) {
+		if(!path.getFileName().toString().contains(".source_")) { //$NON-NLS-1$
+			return false;
+		}
+		
+		try(FileSystem sourceFs = NSFODPUtil.openZipPath(path)) {
+			Path root = sourceFs.getPath("/"); //$NON-NLS-1$
+			Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+			if(Files.exists(manifestPath)) {
+				Manifest sourceManifest;
+				try(InputStream is = Files.newInputStream(manifestPath)) {
+					sourceManifest = new Manifest(is);
+				}
+				String sourceBundle = sourceManifest.getMainAttributes().getValue("Eclipse-SourceBundle"); //$NON-NLS-1$
+				return StringUtil.isNotEmpty(sourceBundle);
+			}
+		} catch(IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		
+		return false;
 	}
 }
