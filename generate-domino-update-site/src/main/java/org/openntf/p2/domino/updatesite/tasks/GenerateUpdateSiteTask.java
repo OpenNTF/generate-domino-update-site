@@ -476,6 +476,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 						Files.copy(file, tempEmbed, StandardCopyOption.REPLACE_EXISTING);
 						try {
 							try(FileSystem tempFs = NSFODPUtil.openZipPath(tempEmbed)) {
+								if(log.isInfoEnabled()) {
+									log.info(Messages.getString("GenerateUpdateSiteTask.flatteningEmbed", relativePath)); //$NON-NLS-1$
+								}
 								copyBundleEmbed(tempFs.getPath("/"), root); //$NON-NLS-1$
 							}
 						} finally {
