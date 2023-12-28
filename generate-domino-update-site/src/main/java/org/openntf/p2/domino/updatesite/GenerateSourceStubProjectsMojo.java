@@ -370,7 +370,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		// Methods
 		for(Method m : clazz.getMethods()) {
-			if(m.isPublic() || m.isProtected()) {
+			if((m.isPublic() || m.isProtected()) && !m.isSynthetic()) {
 				
 				final String access = Utility.accessToString(m.getAccessFlags());
 		        // Get name and signature from constant pool
