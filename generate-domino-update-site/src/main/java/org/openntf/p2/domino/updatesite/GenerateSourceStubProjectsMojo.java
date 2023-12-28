@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
@@ -55,6 +56,7 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.classfile.Utility;
 import org.apache.bcel.generic.Type;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
@@ -84,6 +86,17 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	private File dest;
 	
 	@Override
+	public void execute() throws MojoExecutionException, MojoFailureException {
+		super.execute();
+		
+		try {
+			createTychoStructure(this.dest.toPath());
+		} catch(IOException e) {
+			throw new MojoExecutionException("Encountered exception building Tycho structure", e);
+		}
+	}
+	
+	@Override
 	protected void processBundle(BundleInfo bundle, List<BundleInfo> bundles, Map<String, BundleInfo> bundlesByName,
 			Path tempPom) throws MojoExecutionException {
 		
@@ -108,6 +121,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		try(JarFile origBundle = new JarFile(origJarPath.toFile(), false)) {
 			copyManifest(bundleBase, origBundle);
 			createSourceStubs(src, origBundle);
+			createBuildStubs(bundleBase);
 		} catch (IOException e) {
 			throw new MojoExecutionException(MessageFormat.format("Encountered exception working with JAR {0}", origJarPath), e);
 		}
@@ -431,5 +445,39 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			return "'\\0'"; //$NON-NLS-1$
 		}
 		return "null"; //$NON-NLS-1$
+	}
+	
+	private void createBuildStubs(Path bundleBase) throws IOException {
+		Path buildProperties = bundleBase.resolve("build.properties"); //$NON-NLS-1$
+		Properties props = new Properties();
+		props.put("source..", "src"); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("output..", "target/classes"); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("bin.includes", "META-INF/,\\\n\t."); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("tycho.pomless.parent", "../../pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
+		try(OutputStream os = Files.newOutputStream(buildProperties, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			props.store(os, null);
+		}
+	}
+	
+	private void createTychoStructure(Path projectBase) throws IOException {
+		// Register the Tycho pomless extension
+		Path mvn = projectBase.resolve(".mvn"); //$NON-NLS-1$
+		Files.createDirectories(mvn);
+		Path extensions = mvn.resolve("extensions.xml"); //$NON-NLS-1$
+		try(InputStream is = getClass().getResourceAsStream("/extensions.xml")) { //$NON-NLS-1$
+			Files.copy(is, extensions, StandardCopyOption.REPLACE_EXISTING);
+		}
+		
+		// Create our base POM
+		Path pomXml = projectBase.resolve("pom.xml"); //$NON-NLS-1$
+		try(InputStream is = getClass().getResourceAsStream("/tycho.pom.xml")) { //$NON-NLS-1$
+			Files.copy(is, pomXml, StandardCopyOption.REPLACE_EXISTING);
+		}
+		
+		// Add the structural POM for bundles
+//		Path bundlesPom = projectBase.resolve("bundles").resolve("pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
+//		try(InputStream is = getClass().getResourceAsStream("/bundle.pom.xml")) { //$NON-NLS-1$
+//			Files.copy(is, bundlesPom, StandardCopyOption.REPLACE_EXISTING);
+//		}
 	}
 }
