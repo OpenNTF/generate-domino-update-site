@@ -331,7 +331,11 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 		List<String> interfaces = Arrays.asList(clazz.getInterfaceNames());
 		if(!interfaces.isEmpty()) {
-			pw.print(" implements "); //$NON-NLS-1$
+			if(clazz.isInterface()) {
+				pw.print(" extends "); //$NON-NLS-1$
+			} else {
+				pw.print(" implements "); //$NON-NLS-1$
+			}
 			pw.print(String.join(", ", interfaces)); //$NON-NLS-1$
 		}
 		pw.println(" {"); //$NON-NLS-1$
