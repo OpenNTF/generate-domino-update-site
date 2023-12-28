@@ -395,9 +395,10 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		        }
 		        // Post-patch for inner-class properties
 		        sig = sig.replace('$', '.');
-		        // Don't write synthetic or volatile
+		        // Don't write synthetic, volatile, or transient
 		        sig = sig.replace(" synthetic ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        sig = sig.replace(" volatile ", " "); //$NON-NLS-1$ //$NON-NLS-2$
+		        sig = sig.replace(" transient ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        
 		        pw.print(sig);
 		        
