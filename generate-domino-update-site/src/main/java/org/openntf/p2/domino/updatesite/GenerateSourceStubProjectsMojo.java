@@ -343,6 +343,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				if (cv != null) {
 					pw.print(" = "); //$NON-NLS-1$
 					pw.print(cv);
+				} else if(f.isFinal()) {
+					pw.print(" = "); //$NON-NLS-1$
+					pw.print(defaultReturnValue(f.getType()));
 				}
 
 				pw.println(";"); //$NON-NLS-1$
@@ -377,6 +380,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		        }
 		        // Post-patch for inner-class properties
 		        sig = sig.replace('$', '.');
+		        // Don't write synthetic or volatile
+		        sig = sig.replace(" synthetic ", " "); //$NON-NLS-1$ //$NON-NLS-2$
+		        sig = sig.replace(" volatile ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        
 		        pw.print(sig);
 		        
@@ -394,22 +400,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				} else {
 					Type returnType = m.getReturnType();
 					pw.println(" {"); //$NON-NLS-1$
-					if(Type.BOOLEAN.equals(returnType)) {
-						pw.println("\t\treturn false;"); //$NON-NLS-1$
-					} else if(
-						Type.BYTE.equals(returnType)
-						|| Type.DOUBLE.equals(returnType)
-						|| Type.FLOAT.equals(returnType)
-						|| Type.INT.equals(returnType)
-						|| Type.LONG.equals(returnType)
-						|| Type.SHORT.equals(returnType)
-					) {
-						pw.println("\t\treturn 0;"); //$NON-NLS-1$
-					} else if(Type.CHAR.equals(returnType)) {
-						pw.println("\t\treturn '\\0';"); //$NON-NLS-1$
-					} else if(!Type.VOID.equals(returnType)) {
-						pw.println("\t\treturn null;"); //$NON-NLS-1$
-					}
+					pw.print("\t\treturn "); //$NON-NLS-1$
+					pw.print(defaultReturnValue(returnType));
+					pw.println(";"); //$NON-NLS-1$
 					pw.println("\t}"); //$NON-NLS-1$
 				}
 				
@@ -428,4 +421,21 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		pw.println("}"); //$NON-NLS-1$
 	}
 
+	private String defaultReturnValue(Type returnType) {
+		if(Type.BOOLEAN.equals(returnType)) {
+			return "false"; //$NON-NLS-1$
+		} else if(
+			Type.BYTE.equals(returnType)
+			|| Type.DOUBLE.equals(returnType)
+			|| Type.FLOAT.equals(returnType)
+			|| Type.INT.equals(returnType)
+			|| Type.LONG.equals(returnType)
+			|| Type.SHORT.equals(returnType)
+		) {
+			return "0"; //$NON-NLS-1$
+		} else if(Type.CHAR.equals(returnType)) {
+			return "'\\0'"; //$NON-NLS-1$
+		}
+		return "null"; //$NON-NLS-1$
+	}
 }
