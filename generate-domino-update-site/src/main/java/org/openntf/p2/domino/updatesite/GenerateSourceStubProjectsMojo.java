@@ -331,7 +331,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		String sup = clazz.getSuperclassName();
 		if(StringUtil.isNotEmpty(sup) && !"java.lang.Object".equals(sup) && !clazz.isEnum()) { //$NON-NLS-1$
-			pw.print(" extends " + sup); //$NON-NLS-1$
+			pw.print(" extends " + sup.replace('$', '.')); //$NON-NLS-1$
 		}
 		List<String> interfaces = Arrays.asList(clazz.getInterfaceNames());
 		if(!interfaces.isEmpty()) {
@@ -340,7 +340,10 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			} else {
 				pw.print(" implements "); //$NON-NLS-1$
 			}
-			pw.print(String.join(", ", interfaces)); //$NON-NLS-1$
+			List<String> intNames = interfaces.stream()
+				.map(i -> i.replace('$', '.'))
+				.collect(Collectors.toList());
+			pw.print(String.join(", ", intNames)); //$NON-NLS-1$
 		}
 		pw.println(" {"); //$NON-NLS-1$
 		
