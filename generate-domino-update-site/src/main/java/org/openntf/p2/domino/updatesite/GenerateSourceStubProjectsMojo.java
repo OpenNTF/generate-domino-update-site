@@ -265,21 +265,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	}
 	
 	private void createStubClass(Path src, String packageName, String className, SortedSet<JavaClass> pool) throws MojoExecutionException {
-//		System.out.println("want to create stub for " + packageName + "." + className);
-		
-		
 		try {
 			JavaClass clazz = pool.first();
 			if(!clazz.isPrivate()) {
-				
-				Path outputPath = src.resolve(packageName.replace(".", src.getFileSystem().getSeparator())).resolve(className + ".java"); //$NON-NLS-1$ //$NON-NLS-2$
-//				System.out.println("want to write to " + outputPath);
-				
+				Path outputPath = src.resolve(packageName.replace(".", src.getFileSystem().getSeparator())).resolve(className + ".java"); //$NON-NLS-1$ //$NON-NLS-2$				
 				Files.createDirectories(outputPath.getParent());
 				
 				try(
 					BufferedWriter w = Files.newBufferedWriter(outputPath, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-						PrintWriter pw = new PrintWriter(w)
+					PrintWriter pw = new PrintWriter(w)
 				) {
 					pw.println("package " + packageName + ";"); //$NON-NLS-1$ //$NON-NLS-2$
 					pw.println();
@@ -298,7 +292,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			.skip(1)
 			.collect(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))));
 		
-		// TODO annotations?
+		// TODO annotations? They're likely not required for compilation
 		
 		// Class opener
 		pw.print("public "); //$NON-NLS-1$
