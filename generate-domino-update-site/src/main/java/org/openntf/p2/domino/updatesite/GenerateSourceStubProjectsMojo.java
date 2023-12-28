@@ -310,23 +310,27 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		// Class opener
 		pw.print("public "); //$NON-NLS-1$
-		if(clazz.isStatic()) {
-			pw.print("static "); //$NON-NLS-1$
+		if(clazz.isEnum()) {
+			pw.print("static enum "); //$NON-NLS-1$
+		} else {
+			if(clazz.isStatic()) {
+				pw.print("static "); //$NON-NLS-1$
+			}
+			if(clazz.isFinal()) {
+				pw.print("final "); //$NON-NLS-1$
+			}
+			if(clazz.isAbstract()) {
+				pw.print("abstract "); //$NON-NLS-1$
+			}
+			pw.print(Utility.classOrInterface(clazz.getAccessFlags()));
 		}
-		if(clazz.isFinal()) {
-			pw.print("final "); //$NON-NLS-1$
-		}
-		if(clazz.isAbstract()) {
-			pw.print("abstract "); //$NON-NLS-1$
-		}
-		pw.print(Utility.classOrInterface(clazz.getAccessFlags()));
 		pw.print(" "); //$NON-NLS-1$
 		pw.print(className);
 		
 		// TODO generics
 		
 		String sup = clazz.getSuperclassName();
-		if(StringUtil.isNotEmpty(sup) && !"java.lang.Object".equals(sup)) { //$NON-NLS-1$
+		if(StringUtil.isNotEmpty(sup) && !"java.lang.Object".equals(sup) && !clazz.isEnum()) { //$NON-NLS-1$
 			pw.print(" extends " + sup); //$NON-NLS-1$
 		}
 		List<String> interfaces = Arrays.asList(clazz.getInterfaceNames());
@@ -341,8 +345,19 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		pw.println(" {"); //$NON-NLS-1$
 		
 		// Visible properties
+		// Run through enum properties first
+		if(clazz.isEnum()) {
+			for(Field f : clazz.getFields()) {
+				if(f.isEnum()) {
+					pw.print(f.getName());
+					pw.print(',');
+				}
+			}
+			pw.println(';');
+		}
+		// Now normal properties
 		for (Field f : clazz.getFields()) {
-			if (f.isPublic() || f.isProtected()) {
+			if (!f.isEnum() && (f.isPublic() || f.isProtected())) {
 				pw.print("\t"); //$NON-NLS-1$
 				pw.print("public "); //$NON-NLS-1$
 				if(f.isStatic()) {
@@ -371,6 +386,20 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		// Methods
 		for(Method m : clazz.getMethods()) {
 			if((m.isPublic() || m.isProtected()) && !m.isSynthetic()) {
+				
+				// Skip auto-generated methods for enums
+				if(clazz.isEnum()) {
+					if("valueOf".equals(m.getName())) { //$NON-NLS-1$
+						if(m.getArgumentTypes().length == 1 && Type.STRING.equals(m.getArgumentTypes()[0])) {
+							continue;
+						}
+					}
+					if("values".equals(m.getName())) { //$NON-NLS-1$
+						if(m.getArgumentTypes().length == 0) {
+							continue;
+						}
+					}
+				}
 				
 				final String access = Utility.accessToString(m.getAccessFlags());
 		        // Get name and signature from constant pool
