@@ -408,9 +408,11 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				} else {
 					Type returnType = m.getReturnType();
 					pw.println(" {"); //$NON-NLS-1$
-					pw.print("\t\treturn "); //$NON-NLS-1$
-					pw.print(defaultReturnValue(returnType));
-					pw.println(";"); //$NON-NLS-1$
+					if(!Type.VOID.equals(returnType)) {
+						pw.print("\t\treturn "); //$NON-NLS-1$
+						pw.print(defaultReturnValue(returnType));
+						pw.println(";"); //$NON-NLS-1$
+					}
 					pw.println("\t}"); //$NON-NLS-1$
 				}
 				
