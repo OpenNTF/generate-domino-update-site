@@ -316,6 +316,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		if(clazz.isFinal()) {
 			pw.print("final "); //$NON-NLS-1$
 		}
+		if(clazz.isAbstract()) {
+			pw.print("abstract "); //$NON-NLS-1$
+		}
 		pw.print(Utility.classOrInterface(clazz.getAccessFlags()));
 		pw.print(" "); //$NON-NLS-1$
 		pw.print(className);
