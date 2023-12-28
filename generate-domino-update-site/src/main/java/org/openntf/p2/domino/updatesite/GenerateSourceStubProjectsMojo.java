@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -37,9 +38,10 @@ import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.stream.Collectors;
 
 import org.apache.bcel.Const;
@@ -106,8 +108,6 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		try(JarFile origBundle = new JarFile(origJarPath.toFile(), false)) {
 			copyManifest(bundleBase, origBundle);
 			createSourceStubs(src, origBundle);
-			
-			
 		} catch (IOException e) {
 			throw new MojoExecutionException(MessageFormat.format("Encountered exception working with JAR {0}", origJarPath), e);
 		}
@@ -146,7 +146,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 	}
 	
-	private void createSourceStubs(Path src, JarFile origBundle) throws MojoExecutionException {
+	private void createSourceStubs(Path src, JarFile origBundle) throws MojoExecutionException, IOException {
 		Collection<String> exportedPackages = findExportedPackages(origBundle);
 		
 		// Pre-build a map of class data so that inner classes can be written
@@ -154,37 +154,43 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		// Map to outer class name to a list of 1 or more classes
 		Map<String, SortedSet<JavaClass>> classes = new HashMap<>();
 		
-		for(JarEntry entry : Collections.list(origBundle.entries())) {
+		for(ZipEntry entry : Collections.list(origBundle.entries())) {
 			String entryName = entry.getName();
 			
 			// Extract applicable class files
 			if(entryName.endsWith(".class")) { //$NON-NLS-1$
-				int slashIndex = entryName.lastIndexOf('/');
-				if(slashIndex > -1) {
-					String packageName = entryName.substring(0, slashIndex).replace('/', '.');
-					if(exportedPackages.contains(packageName)) {
-						String className = entryName.substring(slashIndex+1, entryName.length()-".class".length()); //$NON-NLS-1$
-						try(InputStream is = origBundle.getInputStream(entry)) {
-							ClassParser parser = new ClassParser(is, packageName + "." + className); //$NON-NLS-1$
-							JavaClass clazz = parser.parse();
-							
-							if(!(clazz.isPrivate() || clazz.isAnonymous())) {
-
-								String baseName;
-								int dollarIndex = className.indexOf('$');
-								if(dollarIndex > -1) {
-									baseName = className.substring(0, dollarIndex);
-								} else {
-									baseName = className;
-								}
-									
-								SortedSet<JavaClass> pool = classes.computeIfAbsent(packageName + "." + baseName, //$NON-NLS-1$
-									key -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))
-								);
-								pool.add(clazz);
+				processClassEntry(origBundle, entry, exportedPackages, classes);
+			}
+		}
+		
+		// Now do the same for Bundle-ClassPath entries
+		Manifest manifest = origBundle.getManifest();
+		String classpath = manifest.getMainAttributes().getValue("Bundle-ClassPath"); //$NON-NLS-1$
+		if(StringUtil.isNotEmpty(classpath)) {
+			String[] cpEntries = StringUtil.splitString(classpath, ',');
+			for(String cpEntry : cpEntries) {
+				String cpEntryName = cpEntry.trim();
+				if(!cpEntryName.isEmpty()) {
+					ZipEntry entry = origBundle.getJarEntry(cpEntryName);
+					if(entry != null && !entry.isDirectory()) {
+						// Make a temporary copy and read from there
+						Path tempFile = Files.createTempFile("embed", ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+						try {
+							try(InputStream eis = origBundle.getInputStream(entry)) {
+								Files.copy(eis, tempFile, StandardCopyOption.REPLACE_EXISTING);
 							}
-						} catch (IOException e) {
-							throw new MojoExecutionException(MessageFormat.format("Encountered exception reading class file {0} in {1}", entryName, origBundle.getName()), e);
+							try(ZipFile embedBundle = new ZipFile(tempFile.toFile())) {
+								for(ZipEntry embedEntry : Collections.list(embedBundle.entries())) {
+									String entryName = embedEntry.getName();
+									
+									// Extract applicable class files
+									if(entryName.endsWith(".class")) { //$NON-NLS-1$
+										processClassEntry(embedBundle, embedEntry, exportedPackages, classes);
+									}
+								}
+							}
+						} finally {
+							Files.deleteIfExists(tempFile);
 						}
 					}
 				}
@@ -197,6 +203,39 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			String packageName = className.substring(0, className.lastIndexOf('.'));
 			String baseName = className.substring(packageName.length()+1);
 			createStubClass(src, packageName, baseName, pool);
+		}
+	}
+	
+	private void processClassEntry(ZipFile origBundle, ZipEntry entry, Collection<String> exportedPackages, Map<String, SortedSet<JavaClass>> classes) throws MojoExecutionException {
+		String entryName = entry.getName();
+		int slashIndex = entryName.lastIndexOf('/');
+		if(slashIndex > -1) {
+			String packageName = entryName.substring(0, slashIndex).replace('/', '.');
+			if(exportedPackages.contains(packageName)) {
+				String className = entryName.substring(slashIndex+1, entryName.length()-".class".length()); //$NON-NLS-1$
+				try(InputStream is = origBundle.getInputStream(entry)) {
+					ClassParser parser = new ClassParser(is, packageName + "." + className); //$NON-NLS-1$
+					JavaClass clazz = parser.parse();
+					
+					if(!(clazz.isPrivate() || clazz.isAnonymous())) {
+
+						String baseName;
+						int dollarIndex = className.indexOf('$');
+						if(dollarIndex > -1) {
+							baseName = className.substring(0, dollarIndex);
+						} else {
+							baseName = className;
+						}
+							
+						SortedSet<JavaClass> pool = classes.computeIfAbsent(packageName + "." + baseName, //$NON-NLS-1$
+							key -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))
+						);
+						pool.add(clazz);
+					}
+				} catch (IOException e) {
+					throw new MojoExecutionException(MessageFormat.format("Encountered exception reading class file {0} in {1}", entryName, origBundle.getName()), e);
+				}
+			}
 		}
 	}
 	
