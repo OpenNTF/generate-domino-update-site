@@ -172,7 +172,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			String entryName = entry.getName();
 			
 			// Extract applicable class files
-			if(entryName.endsWith(".class")) { //$NON-NLS-1$
+			if(entryName.endsWith(".class") && !entryName.endsWith("/package-info.class")) { //$NON-NLS-1$ //$NON-NLS-2$
 				processClassEntry(origBundle, entry, exportedPackages, classes);
 			}
 		}
@@ -198,7 +198,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 									String entryName = embedEntry.getName();
 									
 									// Extract applicable class files
-									if(entryName.endsWith(".class")) { //$NON-NLS-1$
+									if(entryName.endsWith(".class") && !entryName.endsWith("/package-info.class")) { //$NON-NLS-1$ //$NON-NLS-2$
 										processClassEntry(embedBundle, embedEntry, exportedPackages, classes);
 									}
 								}
