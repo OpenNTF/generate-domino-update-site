@@ -403,7 +403,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					}
 				}
 				
-				if(m.isNative()) {
+				if(m.isNative() || m.isAbstract()) {
 					pw.println(";"); //$NON-NLS-1$
 				} else {
 					Type returnType = m.getReturnType();
