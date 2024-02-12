@@ -80,14 +80,19 @@ public class GenerateUpdateSiteTask implements Runnable {
 	}
 	
 	/**
-	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 to current (11.0.1).
+	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 through 12.0.2.
 	 */
-	public static final String NEON_UPDATE_SITE = "https://download.eclipse.org/releases/neon/201612211000"; //$NON-NLS-1$
+	public static final String UPDATE_SITE_NEON = "https://download.eclipse.org/releases/neon/201612211000"; //$NON-NLS-1$
+	/**
+	 * This is the public Eclipse update site that best matches what's found in 14.0.0.
+	 */
+	public static final String UPDATE_SITE_202112 = "https://download.eclipse.org/releases/2021-12/202112081000/"; //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
 	private final boolean flattenEmbeds;
 	private final Log log;
+	private String eclipseUpdateSite = UPDATE_SITE_NEON;
 
 	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, Log log) {
 		super();
@@ -106,6 +111,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 				.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateLibExtJar", "Notes.jar", domino))); //$NON-NLS-1$ //$NON-NLS-2$
 
 		try {
+			// Attempt to glean the active version based on the known Eclipse core version
+			for(Path eclipse : eclipsePaths) {
+				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
+				if(Files.isDirectory(plugins)) {
+					Path coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.24.0.v20210910-0750.jar"); //$NON-NLS-1$
+					if(Files.isRegularFile(coreRuntime)) {
+						this.eclipseUpdateSite = UPDATE_SITE_202112;
+					}
+				}
+			}
+			
 			Document eclipseArtifacts = fetchEclipseArtifacts();
 			
 			Path dest = mkDir(destDir);
@@ -657,7 +673,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 	 * @since 3.3.0
 	 */
 	private Document fetchEclipseArtifacts() throws MalformedURLException {
-		String urlString = PathUtil.concat(NEON_UPDATE_SITE, "artifacts.xml.xz", '/'); //$NON-NLS-1$
+		String urlString = PathUtil.concat(this.eclipseUpdateSite, "artifacts.xml.xz", '/'); //$NON-NLS-1$
 		URL artifactsUrl = new URL(urlString);
 		try(InputStream is = artifactsUrl.openStream()) {
 			try(XZInputStream zis = new XZInputStream(is)) {
@@ -690,7 +706,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				String bundleName = StringUtil.format("{0}_{1}.jar", symbolicName, version); //$NON-NLS-1$
 				Path dest = destDir.resolve(bundleName);
 				
-				String urlString = PathUtil.concat(NEON_UPDATE_SITE, "plugins", '/'); //$NON-NLS-1$
+				String urlString = PathUtil.concat(this.eclipseUpdateSite, "plugins", '/'); //$NON-NLS-1$
 				urlString = PathUtil.concat(urlString, bundleName, '/');
 				URL bundleUrl = new URL(urlString);
 				try(InputStream is = bundleUrl.openStream()) {
