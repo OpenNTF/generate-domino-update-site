@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -34,12 +35,14 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.stream.Collectors;
 
 import org.apache.bcel.Const;
@@ -53,6 +56,7 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.classfile.Utility;
 import org.apache.bcel.generic.Type;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
@@ -82,6 +86,17 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	private File dest;
 	
 	@Override
+	public void execute() throws MojoExecutionException, MojoFailureException {
+		super.execute();
+		
+		try {
+			createTychoStructure(this.dest.toPath());
+		} catch(IOException e) {
+			throw new MojoExecutionException("Encountered exception building Tycho structure", e);
+		}
+	}
+	
+	@Override
 	protected void processBundle(BundleInfo bundle, List<BundleInfo> bundles, Map<String, BundleInfo> bundlesByName,
 			Path tempPom) throws MojoExecutionException {
 		
@@ -106,8 +121,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		try(JarFile origBundle = new JarFile(origJarPath.toFile(), false)) {
 			copyManifest(bundleBase, origBundle);
 			createSourceStubs(src, origBundle);
-			
-			
+			createBuildStubs(bundleBase);
 		} catch (IOException e) {
 			throw new MojoExecutionException(MessageFormat.format("Encountered exception working with JAR {0}", origJarPath), e);
 		}
@@ -146,7 +160,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 	}
 	
-	private void createSourceStubs(Path src, JarFile origBundle) throws MojoExecutionException {
+	private void createSourceStubs(Path src, JarFile origBundle) throws MojoExecutionException, IOException {
 		Collection<String> exportedPackages = findExportedPackages(origBundle);
 		
 		// Pre-build a map of class data so that inner classes can be written
@@ -154,37 +168,43 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		// Map to outer class name to a list of 1 or more classes
 		Map<String, SortedSet<JavaClass>> classes = new HashMap<>();
 		
-		for(JarEntry entry : Collections.list(origBundle.entries())) {
+		for(ZipEntry entry : Collections.list(origBundle.entries())) {
 			String entryName = entry.getName();
 			
 			// Extract applicable class files
-			if(entryName.endsWith(".class")) { //$NON-NLS-1$
-				int slashIndex = entryName.lastIndexOf('/');
-				if(slashIndex > -1) {
-					String packageName = entryName.substring(0, slashIndex).replace('/', '.');
-					if(exportedPackages.contains(packageName)) {
-						String className = entryName.substring(slashIndex+1, entryName.length()-".class".length()); //$NON-NLS-1$
-						try(InputStream is = origBundle.getInputStream(entry)) {
-							ClassParser parser = new ClassParser(is, packageName + "." + className); //$NON-NLS-1$
-							JavaClass clazz = parser.parse();
-							
-							if(!(clazz.isPrivate() || clazz.isAnonymous())) {
-
-								String baseName;
-								int dollarIndex = className.indexOf('$');
-								if(dollarIndex > -1) {
-									baseName = className.substring(0, dollarIndex);
-								} else {
-									baseName = className;
-								}
-									
-								SortedSet<JavaClass> pool = classes.computeIfAbsent(packageName + "." + baseName, //$NON-NLS-1$
-									key -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))
-								);
-								pool.add(clazz);
+			if(entryName.endsWith(".class") && !entryName.endsWith("/package-info.class")) { //$NON-NLS-1$ //$NON-NLS-2$
+				processClassEntry(origBundle, entry, exportedPackages, classes);
+			}
+		}
+		
+		// Now do the same for Bundle-ClassPath entries
+		Manifest manifest = origBundle.getManifest();
+		String classpath = manifest.getMainAttributes().getValue("Bundle-ClassPath"); //$NON-NLS-1$
+		if(StringUtil.isNotEmpty(classpath)) {
+			String[] cpEntries = StringUtil.splitString(classpath, ',');
+			for(String cpEntry : cpEntries) {
+				String cpEntryName = cpEntry.trim();
+				if(!cpEntryName.isEmpty()) {
+					ZipEntry entry = origBundle.getJarEntry(cpEntryName);
+					if(entry != null && !entry.isDirectory()) {
+						// Make a temporary copy and read from there
+						Path tempFile = Files.createTempFile("embed", ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+						try {
+							try(InputStream eis = origBundle.getInputStream(entry)) {
+								Files.copy(eis, tempFile, StandardCopyOption.REPLACE_EXISTING);
 							}
-						} catch (IOException e) {
-							throw new MojoExecutionException(MessageFormat.format("Encountered exception reading class file {0} in {1}", entryName, origBundle.getName()), e);
+							try(ZipFile embedBundle = new ZipFile(tempFile.toFile())) {
+								for(ZipEntry embedEntry : Collections.list(embedBundle.entries())) {
+									String entryName = embedEntry.getName();
+									
+									// Extract applicable class files
+									if(entryName.endsWith(".class") && !entryName.endsWith("/package-info.class")) { //$NON-NLS-1$ //$NON-NLS-2$
+										processClassEntry(embedBundle, embedEntry, exportedPackages, classes);
+									}
+								}
+							}
+						} finally {
+							Files.deleteIfExists(tempFile);
 						}
 					}
 				}
@@ -197,6 +217,39 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			String packageName = className.substring(0, className.lastIndexOf('.'));
 			String baseName = className.substring(packageName.length()+1);
 			createStubClass(src, packageName, baseName, pool);
+		}
+	}
+	
+	private void processClassEntry(ZipFile origBundle, ZipEntry entry, Collection<String> exportedPackages, Map<String, SortedSet<JavaClass>> classes) throws MojoExecutionException {
+		String entryName = entry.getName();
+		int slashIndex = entryName.lastIndexOf('/');
+		if(slashIndex > -1) {
+			String packageName = entryName.substring(0, slashIndex).replace('/', '.');
+			if(exportedPackages.contains(packageName)) {
+				String className = entryName.substring(slashIndex+1, entryName.length()-".class".length()); //$NON-NLS-1$
+				try(InputStream is = origBundle.getInputStream(entry)) {
+					ClassParser parser = new ClassParser(is, packageName + "." + className); //$NON-NLS-1$
+					JavaClass clazz = parser.parse();
+					
+					if(!(clazz.isPrivate() || clazz.isAnonymous())) {
+
+						String baseName;
+						int dollarIndex = className.indexOf('$');
+						if(dollarIndex > -1) {
+							baseName = className.substring(0, dollarIndex);
+						} else {
+							baseName = className;
+						}
+							
+						SortedSet<JavaClass> pool = classes.computeIfAbsent(packageName + "." + baseName, //$NON-NLS-1$
+							key -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))
+						);
+						pool.add(clazz);
+					}
+				} catch (IOException e) {
+					throw new MojoExecutionException(MessageFormat.format("Encountered exception reading class file {0} in {1}", entryName, origBundle.getName()), e);
+				}
+			}
 		}
 	}
 	
@@ -226,21 +279,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	}
 	
 	private void createStubClass(Path src, String packageName, String className, SortedSet<JavaClass> pool) throws MojoExecutionException {
-//		System.out.println("want to create stub for " + packageName + "." + className);
-		
-		
 		try {
 			JavaClass clazz = pool.first();
 			if(!clazz.isPrivate()) {
-				
-				Path outputPath = src.resolve(packageName.replace(".", src.getFileSystem().getSeparator())).resolve(className + ".java"); //$NON-NLS-1$ //$NON-NLS-2$
-//				System.out.println("want to write to " + outputPath);
-				
+				Path outputPath = src.resolve(packageName.replace(".", src.getFileSystem().getSeparator())).resolve(className + ".java"); //$NON-NLS-1$ //$NON-NLS-2$				
 				Files.createDirectories(outputPath.getParent());
 				
 				try(
 					BufferedWriter w = Files.newBufferedWriter(outputPath, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-						PrintWriter pw = new PrintWriter(w)
+					PrintWriter pw = new PrintWriter(w)
 				) {
 					pw.println("package " + packageName + ";"); //$NON-NLS-1$ //$NON-NLS-2$
 					pw.println();
@@ -259,36 +306,61 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			.skip(1)
 			.collect(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))));
 		
-		// TODO annotations?
+		// TODO annotations? They're likely not required for compilation
 		
 		// Class opener
 		pw.print("public "); //$NON-NLS-1$
-		if(clazz.isStatic()) {
-			pw.print("static "); //$NON-NLS-1$
+		if(clazz.isEnum()) {
+			pw.print("static enum "); //$NON-NLS-1$
+		} else {
+			if(clazz.isStatic()) {
+				pw.print("static "); //$NON-NLS-1$
+			}
+			if(clazz.isFinal()) {
+				pw.print("final "); //$NON-NLS-1$
+			}
+			if(clazz.isAbstract()) {
+				pw.print("abstract "); //$NON-NLS-1$
+			}
+			pw.print(Utility.classOrInterface(clazz.getAccessFlags()));
 		}
-		if(clazz.isFinal()) {
-			pw.print("final "); //$NON-NLS-1$
-		}
-		pw.print(Utility.classOrInterface(clazz.getAccessFlags()));
 		pw.print(" "); //$NON-NLS-1$
 		pw.print(className);
 		
 		// TODO generics
 		
 		String sup = clazz.getSuperclassName();
-		if(StringUtil.isNotEmpty(sup) && !"java.lang.Object".equals(sup)) { //$NON-NLS-1$
-			pw.print(" extends " + sup); //$NON-NLS-1$
+		if(StringUtil.isNotEmpty(sup) && !"java.lang.Object".equals(sup) && !clazz.isEnum()) { //$NON-NLS-1$
+			pw.print(" extends " + sup.replace('$', '.')); //$NON-NLS-1$
 		}
 		List<String> interfaces = Arrays.asList(clazz.getInterfaceNames());
 		if(!interfaces.isEmpty()) {
-			pw.print(" implements "); //$NON-NLS-1$
-			pw.print(String.join(", ", interfaces)); //$NON-NLS-1$
+			if(clazz.isInterface()) {
+				pw.print(" extends "); //$NON-NLS-1$
+			} else {
+				pw.print(" implements "); //$NON-NLS-1$
+			}
+			List<String> intNames = interfaces.stream()
+				.map(i -> i.replace('$', '.'))
+				.collect(Collectors.toList());
+			pw.print(String.join(", ", intNames)); //$NON-NLS-1$
 		}
 		pw.println(" {"); //$NON-NLS-1$
 		
 		// Visible properties
+		// Run through enum properties first
+		if(clazz.isEnum()) {
+			for(Field f : clazz.getFields()) {
+				if(f.isEnum()) {
+					pw.print(f.getName());
+					pw.print(',');
+				}
+			}
+			pw.println(';');
+		}
+		// Now normal properties
 		for (Field f : clazz.getFields()) {
-			if (f.isPublic() || f.isProtected()) {
+			if (!f.isEnum() && (f.isPublic() || f.isProtected())) {
 				pw.print("\t"); //$NON-NLS-1$
 				pw.print("public "); //$NON-NLS-1$
 				if(f.isStatic()) {
@@ -304,6 +376,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				if (cv != null) {
 					pw.print(" = "); //$NON-NLS-1$
 					pw.print(cv);
+				} else if(f.isFinal()) {
+					pw.print(" = "); //$NON-NLS-1$
+					pw.print(defaultReturnValue(f.getType()));
 				}
 
 				pw.println(";"); //$NON-NLS-1$
@@ -313,7 +388,21 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		// Methods
 		for(Method m : clazz.getMethods()) {
-			if(m.isPublic() || m.isProtected()) {
+			if((m.isPublic() || m.isProtected()) && !m.isSynthetic()) {
+				
+				// Skip auto-generated methods for enums
+				if(clazz.isEnum()) {
+					if("valueOf".equals(m.getName())) { //$NON-NLS-1$
+						if(m.getArgumentTypes().length == 1 && Type.STRING.equals(m.getArgumentTypes()[0])) {
+							continue;
+						}
+					}
+					if("values".equals(m.getName())) { //$NON-NLS-1$
+						if(m.getArgumentTypes().length == 0) {
+							continue;
+						}
+					}
+				}
 				
 				final String access = Utility.accessToString(m.getAccessFlags());
 		        // Get name and signature from constant pool
@@ -338,6 +427,10 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		        }
 		        // Post-patch for inner-class properties
 		        sig = sig.replace('$', '.');
+		        // Don't write synthetic, volatile, or transient
+		        sig = sig.replace(" synthetic ", " "); //$NON-NLS-1$ //$NON-NLS-2$
+		        sig = sig.replace(" volatile ", " "); //$NON-NLS-1$ //$NON-NLS-2$
+		        sig = sig.replace(" transient ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        
 		        pw.print(sig);
 		        
@@ -350,26 +443,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					}
 				}
 				
-				if(m.isNative()) {
+				if(m.isNative() || m.isAbstract()) {
 					pw.println(";"); //$NON-NLS-1$
 				} else {
 					Type returnType = m.getReturnType();
 					pw.println(" {"); //$NON-NLS-1$
-					if(Type.BOOLEAN.equals(returnType)) {
-						pw.println("\t\treturn false;"); //$NON-NLS-1$
-					} else if(
-						Type.BYTE.equals(returnType)
-						|| Type.DOUBLE.equals(returnType)
-						|| Type.FLOAT.equals(returnType)
-						|| Type.INT.equals(returnType)
-						|| Type.LONG.equals(returnType)
-						|| Type.SHORT.equals(returnType)
-					) {
-						pw.println("\t\treturn 0;"); //$NON-NLS-1$
-					} else if(Type.CHAR.equals(returnType)) {
-						pw.println("\t\treturn '\\0';"); //$NON-NLS-1$
-					} else if(!Type.VOID.equals(returnType)) {
-						pw.println("\t\treturn null;"); //$NON-NLS-1$
+					if(!Type.VOID.equals(returnType)) {
+						pw.print("\t\treturn "); //$NON-NLS-1$
+						pw.print(defaultReturnValue(returnType));
+						pw.println(";"); //$NON-NLS-1$
 					}
 					pw.println("\t}"); //$NON-NLS-1$
 				}
@@ -389,4 +471,55 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		pw.println("}"); //$NON-NLS-1$
 	}
 
+	private String defaultReturnValue(Type returnType) {
+		if(Type.BOOLEAN.equals(returnType)) {
+			return "false"; //$NON-NLS-1$
+		} else if(
+			Type.BYTE.equals(returnType)
+			|| Type.DOUBLE.equals(returnType)
+			|| Type.FLOAT.equals(returnType)
+			|| Type.INT.equals(returnType)
+			|| Type.LONG.equals(returnType)
+			|| Type.SHORT.equals(returnType)
+		) {
+			return "0"; //$NON-NLS-1$
+		} else if(Type.CHAR.equals(returnType)) {
+			return "'\\0'"; //$NON-NLS-1$
+		}
+		return "null"; //$NON-NLS-1$
+	}
+	
+	private void createBuildStubs(Path bundleBase) throws IOException {
+		Path buildProperties = bundleBase.resolve("build.properties"); //$NON-NLS-1$
+		Properties props = new Properties();
+		props.put("source..", "src"); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("output..", "target/classes"); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("bin.includes", "META-INF/,\\\n\t."); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("tycho.pomless.parent", "../../pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
+		try(OutputStream os = Files.newOutputStream(buildProperties, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			props.store(os, null);
+		}
+	}
+	
+	private void createTychoStructure(Path projectBase) throws IOException {
+		// Register the Tycho pomless extension
+		Path mvn = projectBase.resolve(".mvn"); //$NON-NLS-1$
+		Files.createDirectories(mvn);
+		Path extensions = mvn.resolve("extensions.xml"); //$NON-NLS-1$
+		try(InputStream is = getClass().getResourceAsStream("/extensions.xml")) { //$NON-NLS-1$
+			Files.copy(is, extensions, StandardCopyOption.REPLACE_EXISTING);
+		}
+		
+		// Create our base POM
+		Path pomXml = projectBase.resolve("pom.xml"); //$NON-NLS-1$
+		try(InputStream is = getClass().getResourceAsStream("/tycho.pom.xml")) { //$NON-NLS-1$
+			Files.copy(is, pomXml, StandardCopyOption.REPLACE_EXISTING);
+		}
+		
+		// Add the structural POM for bundles
+//		Path bundlesPom = projectBase.resolve("bundles").resolve("pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
+//		try(InputStream is = getClass().getResourceAsStream("/bundle.pom.xml")) { //$NON-NLS-1$
+//			Files.copy(is, bundlesPom, StandardCopyOption.REPLACE_EXISTING);
+//		}
+	}
 }
