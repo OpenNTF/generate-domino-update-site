@@ -78,21 +78,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 			Pattern.compile("^.+\\.RSA$") //$NON-NLS-1$
 		));
 	}
-	
-	/**
-	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 through 12.0.2.
-	 */
-	public static final String UPDATE_SITE_NEON = "https://download.eclipse.org/releases/neon/201612211000"; //$NON-NLS-1$
-	/**
-	 * This is the public Eclipse update site that best matches what's found in 14.0.0.
-	 */
-	public static final String UPDATE_SITE_202112 = "https://download.eclipse.org/releases/2021-12/202112081000/"; //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
 	private final boolean flattenEmbeds;
 	private final Log log;
-	private String eclipseUpdateSite = UPDATE_SITE_NEON;
+	private String eclipseUpdateSite;
 
 	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, Log log) {
 		super();
@@ -112,15 +103,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 		try {
 			// Attempt to glean the active version based on the known Eclipse core version
-			for(Path eclipse : eclipsePaths) {
-				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
-				if(Files.isDirectory(plugins)) {
-					Path coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.24.0.v20210910-0750.jar"); //$NON-NLS-1$
-					if(Files.isRegularFile(coreRuntime)) {
-						this.eclipseUpdateSite = UPDATE_SITE_202112;
-					}
-				}
-			}
+			this.eclipseUpdateSite = VersionUtil.chooseEclipseUpdateSite(eclipsePaths);
 			
 			Document eclipseArtifacts = fetchEclipseArtifacts();
 			
