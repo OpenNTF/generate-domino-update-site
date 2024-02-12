@@ -18,6 +18,9 @@ package org.openntf.p2.domino.updatesite.tasks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -55,16 +58,20 @@ public class GenerateP2MetadataTask implements Runnable {
 		try {
 			Document artifactsXml = createArtifactsXml();
 			try(OutputStream os = Files.newOutputStream(dest.resolve("artifacts.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
-				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os, StandardCharsets.UTF_8)) {
 					zos.putNextEntry(new ZipEntry("artifacts.xml")); //$NON-NLS-1$
-					NSFODPDomUtil.serialize(zos, artifactsXml, null);
+					try(Writer w = new OutputStreamWriter(zos, StandardCharsets.UTF_8)) {
+						NSFODPDomUtil.serialize(w, artifactsXml, null);
+					}
 				}
 			}
 			Document contentXml = createContentXml();
 			try(OutputStream os = Files.newOutputStream(dest.resolve("content.jar"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) { //$NON-NLS-1$
-				try(ZipOutputStream zos = new ZipOutputStream(os)) {
+				try(ZipOutputStream zos = new ZipOutputStream(os, StandardCharsets.UTF_8)) {
 					zos.putNextEntry(new ZipEntry("content.xml")); //$NON-NLS-1$
-					NSFODPDomUtil.serialize(zos, contentXml, null);	
+					try(Writer w = new OutputStreamWriter(zos, StandardCharsets.UTF_8)) {
+						NSFODPDomUtil.serialize(w, contentXml, null);	
+					}
 				}
 			}
 			

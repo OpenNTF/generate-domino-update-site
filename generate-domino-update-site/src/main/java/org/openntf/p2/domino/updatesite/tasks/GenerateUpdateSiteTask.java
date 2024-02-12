@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -475,6 +476,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 						Files.copy(file, tempEmbed, StandardCopyOption.REPLACE_EXISTING);
 						try {
 							try(FileSystem tempFs = NSFODPUtil.openZipPath(tempEmbed)) {
+								if(log.isInfoEnabled()) {
+									log.info(Messages.getString("GenerateUpdateSiteTask.flatteningEmbed", relativePath)); //$NON-NLS-1$
+								}
 								copyBundleEmbed(tempFs.getPath("/"), root); //$NON-NLS-1$
 							}
 						} finally {
@@ -553,10 +557,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 					}
 				});
 
-				String xml = NSFODPDomUtil.getXmlString(doc, null);
 				Path output = f.resolve("site.xml"); //$NON-NLS-1$
-				try (BufferedWriter w = Files.newBufferedWriter(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-					w.write(xml);
+				try (BufferedWriter w = Files.newBufferedWriter(output, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+					NSFODPDomUtil.serialize(w, doc, null);
 				} catch (IOException e) {
 					throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.errorWritingSiteXml"), e); //$NON-NLS-1$
 				}
@@ -674,7 +677,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 	 * @since 3.3.0
 	 */
 	private void downloadSource(Path artifact, Path destDir, Document artifacts) throws Exception {
-		String fileName = artifact.getFileName().toString();
+		String fileName = StringUtil.toString(artifact.getFileName());
 		Matcher matcher = BUNDLE_FILENAME_PATTERN.matcher(fileName);
 		if(matcher.matches()) {
 			String symbolicName = matcher.group(1) + ".source"; //$NON-NLS-1$
@@ -682,7 +685,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			
 			String query = StringUtil.format("/repository/artifacts/artifact[@classifier='osgi.bundle'][@id='{0}'][@version='{1}']", symbolicName, version); //$NON-NLS-1$
 			NodeList result = NSFODPDomUtil.selectNodes(artifacts, query);
-			if(result.getLength() > 0) {
+			if(result != null && result.getLength() > 0) {
 				// Then we can be confident that it will exist at the expected URL
 				String bundleName = StringUtil.format("{0}_{1}.jar", symbolicName, version); //$NON-NLS-1$
 				Path dest = destDir.resolve(bundleName);
@@ -692,12 +695,12 @@ public class GenerateUpdateSiteTask implements Runnable {
 				URL bundleUrl = new URL(urlString);
 				try(InputStream is = bundleUrl.openStream()) {
 					if(log.isInfoEnabled()) {
-						log.info(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle") + artifact.getFileName().toString()); //$NON-NLS-1$
+						log.info(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle", artifact.getFileName())); //$NON-NLS-1$
 					}
 					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
-				} catch(IOException e) {
+				} catch(Exception e) {
 					if(log.isWarnEnabled()) {
-						log.warn(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle") + urlString, e); //$NON-NLS-1$
+						log.warn(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle", urlString), e); //$NON-NLS-1$
 					}
 				}
 			}
