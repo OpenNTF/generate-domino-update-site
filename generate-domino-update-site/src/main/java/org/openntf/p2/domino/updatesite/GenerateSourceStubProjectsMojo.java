@@ -21,6 +21,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +34,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -61,6 +68,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
 
+import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
 
 @Mojo(name="generateSourceProjects", requiresProject=false)
@@ -85,9 +93,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	@Parameter(property="dest", required=true)
 	private File dest;
 	
+	private URLClassLoader cl;
+	
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
-		super.execute();
+		try(URLClassLoader cl = (this.cl = buildWorkspaceClassLoader())) {
+			super.execute();
+		} catch(IOException e) {
+			// Ignore - from closing the URLClassLoader
+		}
 		
 		try {
 			createTychoStructure(this.dest.toPath());
@@ -309,11 +323,13 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		// TODO annotations? They're likely not required for compilation
 		
 		// Class opener
-		pw.print("public "); //$NON-NLS-1$
+		if(clazz.isPublic()) {
+			pw.print("public "); //$NON-NLS-1$
+		}
 		if(clazz.isEnum()) {
-			pw.print("static enum "); //$NON-NLS-1$
+			pw.print("enum "); //$NON-NLS-1$
 		} else {
-			if(clazz.isStatic()) {
+			if(clazz.isStatic() || Modifier.isStatic(clazz.getModifiers())) {
 				pw.print("static "); //$NON-NLS-1$
 			}
 			if(clazz.isFinal()) {
@@ -369,13 +385,21 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				if(f.isFinal()) {
 					pw.print("final "); //$NON-NLS-1$
 				}
-				pw.print(Utility.signatureToString(f.getSignature()));
+				String fieldSig = Utility.signatureToString(f.getSignature());
+				// Post-patch for inner types
+				fieldSig = fieldSig.replace(f.getType().toString(), f.getType().toString().replace('$', '.'));
+				pw.print(fieldSig);
 				pw.print(" "); //$NON-NLS-1$
 				pw.print(f.getName());
 				final ConstantValue cv = f.getConstantValue();
 				if (cv != null) {
 					pw.print(" = "); //$NON-NLS-1$
-					pw.print(cv);
+					// Special handling for Double.NaN
+					if(Type.DOUBLE.equals(f.getType()) && "NaN".equals(cv.toString())) { //$NON-NLS-1$
+						pw.print("Double.NaN"); //$NON-NLS-1$
+					} else {
+						pw.print(cv);
+					}
 				} else if(f.isFinal()) {
 					pw.print(" = "); //$NON-NLS-1$
 					pw.print(defaultReturnValue(f.getType()));
@@ -388,21 +412,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		// Methods
 		for(Method m : clazz.getMethods()) {
-			if((m.isPublic() || m.isProtected()) && !m.isSynthetic()) {
-				
-				// Skip auto-generated methods for enums
-				if(clazz.isEnum()) {
-					if("valueOf".equals(m.getName())) { //$NON-NLS-1$
-						if(m.getArgumentTypes().length == 1 && Type.STRING.equals(m.getArgumentTypes()[0])) {
-							continue;
-						}
-					}
-					if("values".equals(m.getName())) { //$NON-NLS-1$
-						if(m.getArgumentTypes().length == 0) {
-							continue;
-						}
-					}
-				}
+			if(shouldEmitMethod(clazz, m)) {
 				
 				final String access = Utility.accessToString(m.getAccessFlags());
 		        // Get name and signature from constant pool
@@ -419,6 +429,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		        // Post-patch for constructors
 		        if("<init>".equals(m.getName())) { //$NON-NLS-1$
 		        	sig = sig.replace("void " + className, className); //$NON-NLS-1$
+		        	System.out.println(clazz.getClassName() + " - emitting ctor " + sig);
 		        }
 		        // Post-patch for inner-class constructors
 		        if(clazz.isNested() && "<init>".equals(m.getName())) { //$NON-NLS-1$
@@ -427,10 +438,17 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		        }
 		        // Post-patch for inner-class properties
 		        sig = sig.replace('$', '.');
+		        // Post-post-patch for generated classes like tcpmon in Axis
+		        sig = sig.replace("this.0", "this$0"); //$NON-NLS-1$ //$NON-NLS-2$
 		        // Don't write synthetic, volatile, or transient
 		        sig = sig.replace(" synthetic ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        sig = sig.replace(" volatile ", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		        sig = sig.replace(" transient ", " "); //$NON-NLS-1$ //$NON-NLS-2$
+		        
+		        // Mark default methods as such
+		        if(clazz.isInterface() && !m.isAbstract() && !m.isStatic()) {
+		        	sig = sig.replace("public ", "public default "); //$NON-NLS-1$ //$NON-NLS-2$
+		        }
 		        
 		        pw.print(sig);
 		        
@@ -443,7 +461,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					}
 				}
 				
-				if(m.isNative() || m.isAbstract()) {
+				if("<init>".equals(m.getName()) && !m.isEnum()) { //$NON-NLS-1$
+					writeBasicConstructorBody(pw, clazz);
+				} else if(m.isNative() || m.isAbstract()) {
 					pw.println(";"); //$NON-NLS-1$
 				} else {
 					Type returnType = m.getReturnType();
@@ -460,11 +480,32 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			}
 		}
 		
+		// There may have not been a constructor, but one may be required by the superclass
+		if(needsConstructor(clazz)) {
+			pw.println("\tpublic "); //$NON-NLS-1$
+			pw.print(className);
+			pw.print("()"); //$NON-NLS-1$
+			writeBasicConstructorBody(pw, clazz);
+		}
+		
 		// Write out any inner classes
 		for(JavaClass innerClass : innerClasses) {
-			int dollarIndex = innerClass.getClassName().indexOf('$');
-			
-			writeClass(pw, new TreeSet<>(Arrays.asList(innerClass)), innerClass.getClassName().substring(dollarIndex+1));
+			// Process only direct inner classes, i.e. those where the last $ is just past the end of this class
+			int dollarIndex = innerClass.getClassName().lastIndexOf('$');
+			if(dollarIndex == clazz.getClassName().length()) {
+				// While here, collect any deeper inner classes
+				SortedSet<JavaClass> deeperClasses = pool.stream()
+					.skip(1)
+					.filter(c -> c.getClassName().startsWith(innerClass.getClassName()))
+					.collect(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(JavaClass::getClassName))));
+				
+				String innerClassName = innerClass.getClassName().substring(dollarIndex+1);
+				if(Character.isDigit(innerClassName.charAt(0))) {
+					int dotIndex = innerClass.getClassName().lastIndexOf('.');
+					innerClassName = innerClass.getClassName().substring(dotIndex+1);
+				}
+				writeClass(pw, deeperClasses, innerClassName);
+			}
 		}
 		
 		// End class
@@ -487,6 +528,32 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			return "'\\0'"; //$NON-NLS-1$
 		}
 		return "null"; //$NON-NLS-1$
+	}
+	
+	private String defaultReturnValue(Class<?> returnType) {
+		if(Boolean.TYPE.equals(returnType)) {
+			return "false"; //$NON-NLS-1$
+		} else if(
+			Byte.TYPE.equals(returnType)
+			|| Double.TYPE.equals(returnType)
+			|| Float.TYPE.equals(returnType)
+			|| Integer.TYPE.equals(returnType)
+			|| Long.TYPE.equals(returnType)
+			|| Short.TYPE.equals(returnType)
+		) {
+			return "0"; //$NON-NLS-1$
+		} else if(Character.TYPE.equals(returnType)) {
+			return "'\\0'"; //$NON-NLS-1$
+		}
+		return "null"; //$NON-NLS-1$
+	}
+	
+	private String toCastableName(Class<?> returnType) {
+		if(returnType.isArray()) {
+			Class<?> component = returnType.getComponentType();
+			return toCastableName(component) + "[]"; //$NON-NLS-1$
+		}
+		return returnType.getName();
 	}
 	
 	private void createBuildStubs(Path bundleBase) throws IOException {
@@ -515,11 +582,129 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		try(InputStream is = getClass().getResourceAsStream("/tycho.pom.xml")) { //$NON-NLS-1$
 			Files.copy(is, pomXml, StandardCopyOption.REPLACE_EXISTING);
 		}
+	}
+	
+	private URLClassLoader buildWorkspaceClassLoader() throws MojoExecutionException {
+		Path bundlesDir = src.toPath();
+		if(Files.exists(bundlesDir.resolve("plugins"))) { //$NON-NLS-1$
+			bundlesDir = bundlesDir.resolve("plugins"); //$NON-NLS-1$
+		}
+		try {
+			Collection<URL> urls = new ArrayList<>();
+			
+			// Provide CORBA and JEE dependencies for Java > 9
+			// This is declared in the project dependencies, so will have been downloaded
+			urls.add(findLocalMavenArtifact("org.glassfish.corba", "glassfish-corba-omgapi", "4.2.5", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			urls.add(findLocalMavenArtifact("jakarta.jms", "jakarta.jms-api", "2.0.2", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			urls.add(findLocalMavenArtifact("xmlpull", "xmlpull", "1.1.3.4d_b4_min", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			
+			Files.list(bundlesDir)
+				.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
+				.map(p -> {
+					try {
+						return p.toUri().toURL();
+					} catch (MalformedURLException e) {
+						throw new UncheckedIOException(e);
+					}
+				})
+				.forEach(urls::add);
+			return new URLClassLoader(urls.toArray(new URL[urls.size()]), ClassLoader.getSystemClassLoader());
+		} catch(IOException | UncheckedIOException e) {
+			throw new MojoExecutionException("Encountered exception building workspace ClassLoader", e);
+		}
+	}
+	
+	private static Path findLocalMavenArtifact(String groupId, String artifactId, String version, String type) {
+		String mavenRepo = System.getProperty("maven.repo.local"); //$NON-NLS-1$
+		if (StringUtil.isEmpty(mavenRepo)) {
+			mavenRepo = PathUtil.concat(System.getProperty("user.home"), ".m2", File.separatorChar); //$NON-NLS-1$ //$NON-NLS-2$
+			mavenRepo = PathUtil.concat(mavenRepo, "repository", File.separatorChar); //$NON-NLS-1$
+		}
+		String groupPath = groupId.replace('.', File.separatorChar);
+		Path localPath = Paths.get(mavenRepo).resolve(groupPath).resolve(artifactId).resolve(version);
+		String fileName = StringUtil.format("{0}-{1}.{2}", artifactId, version, type); //$NON-NLS-1$
+		Path localFile = localPath.resolve(fileName);
 		
-		// Add the structural POM for bundles
-//		Path bundlesPom = projectBase.resolve("bundles").resolve("pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
-//		try(InputStream is = getClass().getResourceAsStream("/bundle.pom.xml")) { //$NON-NLS-1$
-//			Files.copy(is, bundlesPom, StandardCopyOption.REPLACE_EXISTING);
+		if(!Files.isRegularFile(localFile)) {
+			throw new RuntimeException("Unable to locate Maven artifact: " + localFile);
+		}
+
+		return localFile;
+	}
+	
+	private void writeBasicConstructorBody(PrintWriter pw, JavaClass clazz) {
+		pw.println(" {"); //$NON-NLS-1$
+		// Constructors must look for a suitable parent constructor
+		try {
+			Class<?> superClass = this.cl.loadClass(clazz.getSuperclassName());
+			Constructor<?>[] ctors;
+			try {
+				ctors = superClass.getDeclaredConstructors();
+			} catch(NoClassDefFoundError e) {
+				// Will show up with older JVMs for things like com.sun.net.ssl.internal.ssl.Provider
+				ctors = new Constructor<?>[0];
+				getLog().warn(MessageFormat.format("Unable to process superclass constructors for {0}: {1}", clazz.getClassName(), e.toString()));
+			}
+			if(ctors.length > 0) {
+				try {
+					superClass.getDeclaredConstructor();
+				} catch(NoSuchMethodException e) {
+					// Pick the first one and make a stub call to it
+					Constructor<?> ctor = ctors[0];
+					pw.print("\t\tsuper("); //$NON-NLS-1$
+					String params = Arrays.stream(ctor.getParameterTypes())
+						.map(t -> '(' + toCastableName(t) + ')' + defaultReturnValue(t))
+						.collect(Collectors.joining(", ")); //$NON-NLS-1$
+					pw.print(params);
+					pw.println(");"); //$NON-NLS-1$
+				}
+			}
+		} catch (ClassNotFoundException e) {
+			getLog().error(MessageFormat.format("Encountered error locating superconstructors for {0}", clazz.getClassName()), e);
+		}
+		pw.println("\t}"); //$NON-NLS-1$
+	}
+	
+	private boolean needsConstructor(JavaClass clazz) {
+		if(clazz.isInterface() || clazz.isEnum()) {
+			return false;
+		}
+		if(Arrays.stream(clazz.getMethods()).noneMatch(m -> "<init>".equals(m.getName()))) { //$NON-NLS-1$
+			return true;
+		}
+		return false;
+	}
+	
+	private boolean shouldEmitMethod(JavaClass clazz, Method m) {
+		// Skip auto-generated methods and constructors for enums
+		if(clazz.isEnum()) {
+			if("valueOf".equals(m.getName())) { //$NON-NLS-1$
+				if(m.getArgumentTypes().length == 1 && Type.STRING.equals(m.getArgumentTypes()[0])) {
+					return false;
+				}
+			}
+			if("values".equals(m.getName())) { //$NON-NLS-1$
+				if(m.getArgumentTypes().length == 0) {
+					return false;
+				}
+			}
+			if("<init>".equals(m.getName())) { //$NON-NLS-1$
+				return false;
+			}
+		}
+		
+		if(m.isSynthetic()) {
+			return false;
+		}
+		if(m.isPrivate()) {
+			return false;
+		}
+		if("<clinit>".equals(m.getName())) { //$NON-NLS-1$
+			return false;
+		}
+//		if("<init>".equals(m.getName())) { //$NON-NLS-1$
+//			return true;
 //		}
+		return true;
 	}
 }
