@@ -21,8 +21,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileVisitResult;
@@ -56,18 +54,16 @@ import org.apache.maven.plugin.logging.Log;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.Messages;
+import org.openntf.p2.domino.updatesite.util.EclipseUtil;
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
-import org.tukaani.xz.XZInputStream;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
-import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
 
 public class GenerateUpdateSiteTask implements Runnable {
-	private static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
-	private static final Pattern BUNDLE_FILENAME_PATTERN = FEATURE_FILENAME_PATTERN;
+	public static final Pattern FEATURE_FILENAME_PATTERN = Pattern.compile("^(.+)_(\\d.+)\\.jar$"); //$NON-NLS-1$
+	public static final Pattern BUNDLE_FILENAME_PATTERN = FEATURE_FILENAME_PATTERN;
 	private static final Set<Pattern> EXCLUDED_FILENAMES = new HashSet<>();
 	static {
 		EXCLUDED_FILENAMES.addAll(Arrays.asList(
@@ -103,9 +99,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 		try {
 			// Attempt to glean the active version based on the known Eclipse core version
-			this.eclipseUpdateSite = VersionUtil.chooseEclipseUpdateSite(eclipsePaths);
+			this.eclipseUpdateSite = EclipseUtil.chooseEclipseUpdateSite(eclipsePaths);
 			
-			Document eclipseArtifacts = fetchEclipseArtifacts();
+			Document eclipseArtifacts = EclipseUtil.fetchEclipseArtifacts(log, this.eclipseUpdateSite);
 			
 			Path dest = mkDir(destDir);
 			Path destFeatures = mkDir(dest.resolve("features")); //$NON-NLS-1$
@@ -366,7 +362,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Path destJar = copyOrPack(artifact, destDir);
 				
 				if(eclipseArtifacts != null && destJar != null) {
-					downloadSource(destJar, destDir, eclipseArtifacts);
+					EclipseUtil.downloadSource(log, destJar, destDir, eclipseArtifacts, this.eclipseUpdateSite);
 				}
 
 				if (Thread.currentThread().isInterrupted()) {
@@ -646,65 +642,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 		// This only exists on servers and the Windows client for now, so no need to look through special Mac paths
 		return findLibExtJar(domino, "xsp.http.bootstrap.jar"); //$NON-NLS-1$
 	}
-
-	/**
-	 * @throws XMLException 
-	 * @throws MalformedURLException 
-	 * Retrieves the contents of the artifacts.jar file for the current matching Eclipse update
-	 * site as a {@link Document}.
-	 * 
-	 * @since 3.3.0
-	 */
-	private Document fetchEclipseArtifacts() throws MalformedURLException {
-		String urlString = PathUtil.concat(this.eclipseUpdateSite, "artifacts.xml.xz", '/'); //$NON-NLS-1$
-		URL artifactsUrl = new URL(urlString);
-		try(InputStream is = artifactsUrl.openStream()) {
-			try(XZInputStream zis = new XZInputStream(is)) {
-				return NSFODPDomUtil.createDocument(zis);
-			}
-		} catch (IOException e) {
-			if(log.isWarnEnabled()) {
-				log.warn(Messages.getString("GenerateUpdateSiteTask.unableToLoadNeon"), e); //$NON-NLS-1$
-			}
-			return null;
-		}
-	}
 	
-	/**
-	 * Looks for a source bundle matching the given artifact on the Neon update site.
-	 * 
-	 * @since 3.3.0
-	 */
-	private void downloadSource(Path artifact, Path destDir, Document artifacts) throws Exception {
-		String fileName = StringUtil.toString(artifact.getFileName());
-		Matcher matcher = BUNDLE_FILENAME_PATTERN.matcher(fileName);
-		if(matcher.matches()) {
-			String symbolicName = matcher.group(1) + ".source"; //$NON-NLS-1$
-			String version = matcher.group(2);
-			
-			String query = StringUtil.format("/repository/artifacts/artifact[@classifier='osgi.bundle'][@id='{0}'][@version='{1}']", symbolicName, version); //$NON-NLS-1$
-			NodeList result = NSFODPDomUtil.selectNodes(artifacts, query);
-			if(result != null && result.getLength() > 0) {
-				// Then we can be confident that it will exist at the expected URL
-				String bundleName = StringUtil.format("{0}_{1}.jar", symbolicName, version); //$NON-NLS-1$
-				Path dest = destDir.resolve(bundleName);
-				
-				String urlString = PathUtil.concat(this.eclipseUpdateSite, "plugins", '/'); //$NON-NLS-1$
-				urlString = PathUtil.concat(urlString, bundleName, '/');
-				URL bundleUrl = new URL(urlString);
-				try(InputStream is = bundleUrl.openStream()) {
-					if(log.isInfoEnabled()) {
-						log.info(Messages.getString("GenerateUpdateSiteTask.downloadingSourceBundle", artifact.getFileName())); //$NON-NLS-1$
-					}
-					Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
-				} catch(Exception e) {
-					if(log.isWarnEnabled()) {
-						log.warn(Messages.getString("GenerateUpdateSiteTask.unableToDownloadSourceBundle", urlString), e); //$NON-NLS-1$
-					}
-				}
-			}
-		}
-	}
+	
 	
 	public static void copyBundleEmbed(Path source, Path dest) throws IOException {
 		Files.walkFileTree(source, new CopyEmbedVisitor(dest));

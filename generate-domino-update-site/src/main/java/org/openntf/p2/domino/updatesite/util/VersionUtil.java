@@ -15,14 +15,10 @@
  */
 package org.openntf.p2.domino.updatesite.util;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
-import java.util.Collection;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,19 +38,6 @@ public enum VersionUtil {
 	private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd"); //$NON-NLS-1$
 	private static final DateTimeFormatter NOTESVERSIONDATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US); // U-S-A! U-S-A! //$NON-NLS-1$
 	private static final Pattern RELEASE_PATTERN = Pattern.compile("Release (\\d+\\.\\d+(\\.\\d+)?)(FP(\\d+))?"); //$NON-NLS-1$
-	
-	/**
-	 * This is the public Eclipse update site that best matches what's found in 9.0.1FP10 through 12.0.2.
-	 */
-	public static final String UPDATE_SITE_NEON = "https://download.eclipse.org/releases/neon/201612211000"; //$NON-NLS-1$
-	/**
-	 * This is the public Eclipse update site that best matches what's found in 14.0.0.
-	 */
-	public static final String UPDATE_SITE_202112 = "https://download.eclipse.org/releases/2021-12/202112081000/"; //$NON-NLS-1$
-	/**
-	 * The file name for the Eclipse core runtime bundle used in 2021-12.
-	 */
-	public static final String ECLIPSE_CORE_202112 = "org.eclipse.core.runtime_3.24.0.v20210910-0750.jar"; //$NON-NLS-1$
 	
 	/**
 	 * Generates an OSGi-friendly version number based on the {@code NotesVersion} and
@@ -104,14 +87,5 @@ public enum VersionUtil {
 		result.append('.');
 		result.append(TIMESTAMP_FORMAT.format(parsedDate));
 		return result.toString();
-	}
-	
-	public static String chooseEclipseUpdateSite(Collection<Path> eclipsePaths) throws IOException {
-		for(Path eclipse : eclipsePaths) {
-			if(Files.find(eclipse, Integer.MAX_VALUE, (path, attr) -> path.endsWith(ECLIPSE_CORE_202112)).findFirst().isPresent()) {
-				return UPDATE_SITE_202112;
-			}
-		}
-		return UPDATE_SITE_NEON;
 	}
 }
