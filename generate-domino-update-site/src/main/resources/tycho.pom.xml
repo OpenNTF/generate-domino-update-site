@@ -39,6 +39,13 @@
 			<version>2.3.3</version>
 			<scope>provided</scope>
 		</dependency>
+		<!-- Equinox includes a subclass of this resolver -->
+		<dependency>
+			<groupId>org.apache.felix</groupId>
+			<artifactId>org.apache.felix.resolver</artifactId>
+			<version>2.0.4</version>
+			<scope>provided</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

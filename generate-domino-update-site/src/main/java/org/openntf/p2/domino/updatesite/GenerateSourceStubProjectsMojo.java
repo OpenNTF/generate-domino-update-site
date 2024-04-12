@@ -15,6 +15,13 @@
  */
 package org.openntf.p2.domino.updatesite;
 
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.defaultReturnValue;
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printClassSignature;
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printParameters;
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printTypeVariables;
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.toCastableName;
+import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.writeBasicConstructorBody;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -23,13 +30,10 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
-import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.net.MalformedURLException;
@@ -59,9 +63,12 @@ import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-import java.util.stream.Collectors;
+
+import com.ibm.commons.util.PathUtil;
+import com.ibm.commons.util.StringUtil;
 
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -69,11 +76,9 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
+import org.openntf.p2.domino.updatesite.util.ClassWriterUtil;
 import org.openntf.p2.domino.updatesite.util.EclipseUtil;
 import org.w3c.dom.Document;
-
-import com.ibm.commons.util.PathUtil;
-import com.ibm.commons.util.StringUtil;
 
 @Mojo(name = "generateSourceProjects", requiresProject = false)
 public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo {
@@ -437,53 +442,14 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 
 		// TODO annotations? They're likely not required for compilation
 
-		pw.println("package " + clazz.getPackage().getName() + ";"); //$NON-NLS-1$ //$NON-NLS-2$
-		pw.println();
+		// Skip emitting the package name if it's an inner class
+		if(clazz.getName().indexOf('$') == -1) {
+			pw.println("package " + clazz.getPackage().getName() + ";"); //$NON-NLS-1$ //$NON-NLS-2$
+			pw.println();
+		}
 
 		// Class opener
-		int modifiers = clazz.getModifiers();
-		if (Modifier.isPublic(modifiers)) {
-			pw.print("public "); //$NON-NLS-1$
-		}
-		if (clazz.isEnum()) {
-			pw.print("enum "); //$NON-NLS-1$
-		} else {
-			if (Modifier.isStatic(modifiers)) {
-				pw.print("static "); //$NON-NLS-1$
-			}
-			if (Modifier.isFinal(modifiers)) {
-				pw.print("final "); //$NON-NLS-1$
-			}
-			if (Modifier.isAbstract(modifiers)) {
-				pw.print("abstract "); //$NON-NLS-1$
-			}
-			if (clazz.isInterface()) {
-				pw.print("interface"); //$NON-NLS-1$
-			} else {
-				pw.print("class"); //$NON-NLS-1$
-			}
-		}
-		pw.print(" "); //$NON-NLS-1$
-		pw.print(className);
-		
-		@SuppressWarnings("unchecked")
-		TypeVariable<Class<?>>[] genericParams = (TypeVariable<Class<?>>[])(Object)clazz.getTypeParameters();
-		printTypeVariables(pw, genericParams);
-
-		Class<?> sup = clazz.getSuperclass();
-		if (sup != null && !"java.lang.Object".equals(sup.getName()) && !clazz.isEnum()) { //$NON-NLS-1$
-			pw.print(" extends " + sup.getName().replace('$', '.')); //$NON-NLS-1$
-		}
-		List<String> interfaces = Arrays.stream(clazz.getInterfaces()).map(Class::getName).collect(Collectors.toList());
-		if (!interfaces.isEmpty()) {
-			if (clazz.isInterface()) {
-				pw.print(" extends "); //$NON-NLS-1$
-			} else {
-				pw.print(" implements "); //$NON-NLS-1$
-			}
-			List<String> intNames = interfaces.stream().map(i -> i.replace('$', '.')).collect(Collectors.toList());
-			pw.print(String.join(", ", intNames)); //$NON-NLS-1$
-		}
+		pw.print(printClassSignature(clazz, className));
 		pw.println(" {"); //$NON-NLS-1$
 
 		// Visible properties
@@ -509,7 +475,8 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				if (Modifier.isStatic(fmod)) {
 					pw.print("static "); //$NON-NLS-1$
 				}
-				if (Modifier.isFinal(fmod)) {
+				// Ignore final for non-statics, since we don't care how it's set
+				if (Modifier.isStatic(fmod) && Modifier.isFinal(fmod)) {
 					pw.print("final "); //$NON-NLS-1$
 				}
 				String fieldSig = toCastableName(f.getType());
@@ -582,8 +549,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				pw.print(clazz.getSimpleName());
 
 				printParameters(pw, ctor.getParameters());
+				Type[] exceps = ctor.getGenericExceptionTypes();
+				if (exceps != null && exceps.length > 0) {
+					List<String> excepNames = Arrays.stream(exceps).map(ClassWriterUtil::toCastableName)
+							.collect(Collectors.toList());
+					pw.print(" throws "); //$NON-NLS-1$
+					pw.print(String.join(", ", excepNames)); //$NON-NLS-1$
+				}
 
-				writeBasicConstructorBody(pw, clazz);
+				pw.print(writeBasicConstructorBody(clazz, this.cl, getLog()));
 				pw.println();
 			}
 		}
@@ -620,7 +594,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				}
 				
 				TypeVariable<Method>[] typeVars = m.getTypeParameters();
-				printTypeVariables(pw, typeVars);
+				pw.append(printTypeVariables(typeVars));
 				
 				if (Void.TYPE.equals(m.getReturnType())) {
 					pw.print("void "); //$NON-NLS-1$
@@ -636,7 +610,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 
 				Type[] exceps = m.getGenericExceptionTypes();
 				if (exceps != null && exceps.length > 0) {
-					List<String> excepNames = Arrays.stream(exceps).map(this::toCastableName)
+					List<String> excepNames = Arrays.stream(exceps).map(ClassWriterUtil::toCastableName)
 							.collect(Collectors.toList());
 					pw.print(" throws "); //$NON-NLS-1$
 					pw.print(String.join(", ", excepNames)); //$NON-NLS-1$
@@ -665,7 +639,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			pw.println("\tpublic "); //$NON-NLS-1$
 			pw.print(className);
 			pw.print("()"); //$NON-NLS-1$
-			writeBasicConstructorBody(pw, clazz);
+			writeBasicConstructorBody(clazz, this.cl, getLog());
 		}
 
 		// Write out any inner classes
@@ -690,30 +664,6 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 
 		// End class
 		pw.println("}"); //$NON-NLS-1$
-	}
-
-	private String defaultReturnValue(Type returnType) {
-		if (Boolean.TYPE.equals(returnType)) {
-			return "false"; //$NON-NLS-1$
-		} else if (Byte.TYPE.equals(returnType) || Double.TYPE.equals(returnType) || Float.TYPE.equals(returnType)
-				|| Integer.TYPE.equals(returnType) || Long.TYPE.equals(returnType) || Short.TYPE.equals(returnType)) {
-			return "0"; //$NON-NLS-1$
-		} else if (Character.TYPE.equals(returnType)) {
-			return "'\\0'"; //$NON-NLS-1$
-		}
-		return "null"; //$NON-NLS-1$
-	}
-
-	private String toCastableName(Type type) {
-		if (type instanceof Class) {
-			if (((Class<?>) type).isArray()) {
-				Class<?> component = ((Class<?>) type).getComponentType();
-				return toCastableName(component) + "[]"; //$NON-NLS-1$
-			} else {
-				return ((Class<?>) type).getName();
-			}
-		}
-		return type.toString();
 	}
 
 	private void createBuildStubs(Path bundleBase) throws IOException {
@@ -801,47 +751,6 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		return localFile;
 	}
 
-	private void writeBasicConstructorBody(PrintWriter pw, Class<?> clazz) {
-		Class<?> sup = clazz.getSuperclass();
-		if (sup == null) {
-			return;
-		}
-
-		pw.println(" {"); //$NON-NLS-1$
-		// Constructors must look for a suitable parent constructor
-		try {
-			Class<?> superClass = this.cl.loadClass(sup.getName());
-			Constructor<?>[] ctors;
-			try {
-				ctors = superClass.getDeclaredConstructors();
-			} catch (NoClassDefFoundError e) {
-				// Will show up with older JVMs for things like
-				// com.sun.net.ssl.internal.ssl.Provider
-				ctors = new Constructor<?>[0];
-				getLog().warn(MessageFormat.format("Unable to process superclass constructors for {0}: {1}",
-						clazz.getName(), e.toString()));
-			}
-			if (ctors.length > 0) {
-				try {
-					superClass.getDeclaredConstructor();
-				} catch (NoSuchMethodException e) {
-					// Pick the first one and make a stub call to it
-					Constructor<?> ctor = ctors[0];
-					pw.print("\t\tsuper("); //$NON-NLS-1$
-					String params = Arrays.stream(ctor.getParameterTypes())
-							.map(t -> '(' + toCastableName(t) + ')' + defaultReturnValue(t))
-							.collect(Collectors.joining(", ")); //$NON-NLS-1$
-					pw.print(params);
-					pw.println(");"); //$NON-NLS-1$
-				}
-			}
-		} catch (ClassNotFoundException e) {
-			getLog().error(
-					MessageFormat.format("Encountered error locating superconstructors for {0}", clazz.getName()), e);
-		}
-		pw.println("\t}"); //$NON-NLS-1$
-	}
-
 	private boolean needsConstructor(Class<?> clazz) {
 		if(true) { return false; }
 		if (clazz.isInterface() || clazz.isEnum()) {
@@ -854,7 +763,11 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	}
 	
 	private boolean shouldEmitClass(Class<?> clazz) {
-		if(Modifier.isPrivate(clazz.getModifiers()) || clazz.isAnonymousClass()) {
+		if(Modifier.isPrivate(clazz.getModifiers()) && clazz.getName().indexOf('$') == -1) {
+			// Equinox has some cases of public methods referencing private internal types
+			return false;
+		}
+		if(clazz.isAnonymousClass()) {
 			return false;
 		}
 		
@@ -919,38 +832,5 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 //			return true;
 //		}
 		return true;
-	}
-
-	private void printParameters(PrintWriter pw, Parameter[] parameters) {
-		pw.print('(');
-
-		String params = Arrays.stream(parameters).map(p -> toCastableName(p.getParameterizedType()) + " " + p.getName()) //$NON-NLS-1$
-				.collect(Collectors.joining(", ")); //$NON-NLS-1$
-		pw.print(params);
-
-		pw.print(')');
-	}
-	
-	private <T extends GenericDeclaration> void printTypeVariables(PrintWriter pw, TypeVariable<T>[] typeVars) {
-		if(typeVars != null && typeVars.length > 0) {
-			pw.print('<');
-			String paramString = Arrays.stream(typeVars)
-				.map(param -> {
-					StringBuilder result = new StringBuilder();
-					result.append(param.getName());
-					AnnotatedType[] bounds = param.getAnnotatedBounds();
-					if(bounds != null && bounds.length > 0) {
-						String boundsString = Arrays.stream(bounds)
-							.map(bound -> bound.toString())
-							.collect(Collectors.joining(" & ")); //$NON-NLS-1$
-						result.append(" extends "); //$NON-NLS-1$
-						result.append(boundsString);
-					}
-					return result.toString();
-				})
-				.collect(Collectors.joining(", ")); //$NON-NLS-1$
-			pw.print(paramString);
-			pw.print('>');
-		}
 	}
 }
