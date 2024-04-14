@@ -138,11 +138,15 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		// Special-case ICU base, as it's impossibly old, troublesome, and a subset of real ICU, which is also included
 		if("com.ibm.icu.base".equals(bundle.getArtifactId())) { //$NON-NLS-1$
-			getLog().debug("- Skipping com.ibm.icu.base");
+			if(getLog().isDebugEnabled()) {
+				getLog().debug("- Skipping com.ibm.icu.base");
+			}
 			return;
 		} else if(bundle.getArtifactId().endsWith(".source")) { //$NON-NLS-1$
 			// TODO prefer using this local bundle when available
-			getLog().debug(MessageFormat.format("- Skipping existing source bundle {0}", bundle.getArtifactId()));
+			if(getLog().isDebugEnabled()) {
+				getLog().debug(MessageFormat.format("- Skipping existing source bundle {0}", bundle.getArtifactId()));
+			}
 			return;
 		}
 
