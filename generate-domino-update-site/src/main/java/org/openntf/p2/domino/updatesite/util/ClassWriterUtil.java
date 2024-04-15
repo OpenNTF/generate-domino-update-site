@@ -2,6 +2,7 @@ package org.openntf.p2.domino.updatesite.util;
 
 import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -10,9 +11,12 @@ import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.maven.plugin.logging.Log;
 import org.openntf.p2.domino.updatesite.GenerateSourceStubProjectsMojo;
 
@@ -114,7 +118,7 @@ public enum ClassWriterUtil {
 				result.append(String.join(", ", excepNames)); //$NON-NLS-1$
 			}
 
-			result.append(writeBasicConstructorBody(clazz, cl, log));
+			result.append(writeBasicConstructorBody(clazz, ctor, cl, log));
 			result.append('\n');
 		}
 		return result.toString();
@@ -126,7 +130,7 @@ public enum ClassWriterUtil {
 				Class<?> component = ((Class<?>) type).getComponentType();
 				return toCastableName(component) + "[]"; //$NON-NLS-1$
 			} else {
-				return getClassName((Class<?>) type).replace('$', '.');
+				return ((Class<?>) type).getName().replace('$', '.');
 			}
 		}
 		return type.toString().replace('$', '.');
@@ -149,20 +153,11 @@ public enum ClassWriterUtil {
 		return toCastableName(t);
 	}
 	
-	private static String getClassName(Class<?> clazz) {
-		Package p = clazz.getPackage();
-		if(p != null && p.getName().equals("java.lang")) { //$NON-NLS-1$
-			return clazz.getSimpleName();
-		} else {
-			return clazz.getName();
-		}
-	}
-	
 	public static String printClassSignature(Class<?> clazz, String className) {
 		StringBuilder result = new StringBuilder();
 		
 		int modifiers = clazz.getModifiers();
-		if (Modifier.isPublic(modifiers) || GenerateSourceStubProjectsMojo.PUBLIC_CLASSES.contains(clazz.getName())) {
+		if (Modifier.isPublic(modifiers) || ClassWriterConfig.PUBLIC_CLASSES.contains(clazz.getName())) {
 			result.append("public "); //$NON-NLS-1$
 		}
 		if (clazz.isEnum()) {
@@ -214,7 +209,114 @@ public enum ClassWriterUtil {
 		return result.toString();
 	}
 	
-	public static String writeBasicConstructorBody(Class<?> clazz, ClassLoader cl, Log log) {
+	public static String printClassFields(Class<?> clazz, Log log) {
+		int constantVal = 0;
+		
+		Collection<String> skip = ClassWriterConfig.SKIP_FIELDS.get(clazz.getName());
+		StringBuilder result = new StringBuilder();
+		for (Field f : clazz.getDeclaredFields()) {
+			if(f.isSynthetic()) {
+				continue;
+			}
+			if(skip != null && skip.contains(f.getName())) {
+				continue;
+			}
+			
+			int fmod = f.getModifiers();
+			if (!f.isEnumConstant() && !Modifier.isPrivate(fmod)) {
+				result.append("\t"); //$NON-NLS-1$
+				result.append("public "); //$NON-NLS-1$
+				if (Modifier.isStatic(fmod)) {
+					result.append("static "); //$NON-NLS-1$
+				}
+				// Ignore final for non-statics, since we don't care how it's set
+				if (Modifier.isStatic(fmod) && Modifier.isFinal(fmod)) {
+					result.append("final "); //$NON-NLS-1$
+				}
+				String fieldSig = toCastableName(f.getType());
+				result.append(fieldSig);
+				result.append(" "); //$NON-NLS-1$
+				result.append(f.getName());
+				
+				if (Modifier.isStatic(fmod) && Modifier.isFinal(fmod)) {
+					try {
+						f.setAccessible(true);
+						Class<?> ftype = f.getType();
+						if(String.class.equals(ftype)) {
+							// Check for a known override
+							Map<String, String> overrides = ClassWriterConfig.KNOWN_STRING_CONSTANTS.get(clazz.getName());
+							if(overrides != null && overrides.containsKey(f.getName())) {
+								String val = overrides.get(f.getName());
+								result.append(" = "); //$NON-NLS-1$
+								result.append('"');
+								result.append(StringEscapeUtils.escapeJava(val));
+								result.append('"');
+							} else {
+								try {
+									final Object cv = f.get(null);
+									if(cv == null) {
+										result.append(" = null"); //$NON-NLS-1$
+									} else {
+										result.append(" = "); //$NON-NLS-1$
+										result.append('"');
+										result.append(StringEscapeUtils.escapeJava(cv.toString()));
+										result.append('"');
+									}
+								} catch(Throwable t) {
+									// Will be due to the string actually being derived, and could
+									//   be any number of problems. Just write nothing
+									if(log != null && log.isWarnEnabled()) {
+										log.warn(MessageFormat.format("Encountered exception writing String field {0}.{1}",
+											clazz.getName(), f.getName()), t);
+									}
+								}
+							}
+						} else if(Number.class.isAssignableFrom(ftype)) {
+							result.append(" = "); //$NON-NLS-1$
+							final Object cv = f.get(null);
+							if(cv == null) {
+								result.append("null"); //$NON-NLS-1$
+							} else if (Double.TYPE.equals(ftype) && Double.NaN == (double) cv) {
+								result.append("Double.NaN"); //$NON-NLS-1$
+							} else if (Float.class.equals(ftype)) {
+								result.append(cv);
+								result.append('f');
+							} else {
+								result.append(cv);
+							}
+						} else if(ftype.isPrimitive()) {
+							// Make up a fake but incrementing value, to avoid initializing
+							//   the class but allowing for switch statements to still work
+							result.append(" = "); //$NON-NLS-1$
+							if (Byte.TYPE.equals(ftype) || Integer.TYPE.equals(ftype) || Short.TYPE.equals(ftype)) {
+								result.append('(');
+								result.append(ftype.getName().toString());
+								result.append(')');
+								result.append(String.valueOf(constantVal++));
+							} else if (Character.TYPE.equals(ftype)) {
+								result.append("'\0'"); //$NON-NLS-1$
+							} else {
+								result.append(defaultReturnValue(f.getType()));
+							}
+						} else {
+							result.append(" = "); //$NON-NLS-1$
+							result.append(defaultReturnValue(f.getType()));
+						}
+					} catch (IllegalAccessException e) {
+						if(log != null && log.isErrorEnabled()) {
+							log.error(MessageFormat.format("Encountered exception writing field {0}.{1}",
+								clazz.getName(), f.getName()), e);
+						}
+					}
+				}
+
+				result.append(";\n\n"); //$NON-NLS-1$
+			}
+		}
+		return result.toString();
+	}
+	
+	public static String writeBasicConstructorBody(Class<?> clazz, Constructor<?> constructor, ClassLoader cl, Log log) {
 		
 		StringBuilder result = new StringBuilder();
 		Class<?> sup = clazz.getSuperclass();
@@ -240,7 +342,13 @@ public enum ClassWriterUtil {
 			}
 			if (ctors.length > 0) {
 				try {
-					superClass.getDeclaredConstructor();
+					Constructor<?> base = superClass.getDeclaredConstructor();
+					if(Modifier.isPrivate(base.getModifiers())) {
+						throw new NoSuchMethodException();
+					}
+					if(isPackagePrivate(base.getModifiers()) && !superClass.getPackage().getName().equals(clazz.getPackage().getName())) {
+						throw new NoSuchMethodException();
+					}
 				} catch (NoSuchMethodException e) {
 					// The parent may itself be an inner class - check for an applicable
 					//   "empty" constructor
@@ -261,6 +369,9 @@ public enum ClassWriterUtil {
 						List<Constructor<?>> candidates = Arrays.stream(ctors)
 							.filter(c -> {
 								int mod = c.getModifiers();
+								if(c.isSynthetic()) {
+									return false;
+								}
 								if(Modifier.isPublic(mod) || Modifier.isProtected(mod)) {
 									return true;
 								}
@@ -273,6 +384,7 @@ public enum ClassWriterUtil {
 							})
 							.collect(Collectors.toList());
 						if(!candidates.isEmpty()) {
+							
 							// Prefer no-exception constructors
 							Constructor<?> ctor = candidates.stream()
 								.filter(c -> c.getExceptionTypes().length == 0)
@@ -341,10 +453,20 @@ public enum ClassWriterUtil {
 			result.append(' ');
 		}
 		
-		if (Void.TYPE.equals(m.getReturnType())) {
+		Map<MethodMatcher, Class<?>> returnOverrides = ClassWriterConfig.RETURN_OVERRIDES.get(clazz.getName());
+		Type returnType = m.getGenericReturnType();
+		if(returnOverrides != null) {
+			for(Map.Entry<MethodMatcher, Class<?>> entry : returnOverrides.entrySet()) {
+				if(entry.getKey().matches(m)) {
+					returnType = entry.getValue();
+					break;
+				}
+			}
+		}
+		
+		if (Void.TYPE.equals(returnType)) {
 			result.append("void "); //$NON-NLS-1$
 		} else {
-			Type returnType = m.getGenericReturnType();
 			result.append(toCastableName(returnType));
 			result.append(' ');
 		}
@@ -364,7 +486,6 @@ public enum ClassWriterUtil {
 		if (Modifier.isNative(mmod) || Modifier.isAbstract(mmod)) {
 			result.append(';');
 		} else {
-			Type returnType = m.getReturnType();
 			result.append(" {\n"); //$NON-NLS-1$
 			if (!Void.TYPE.equals(returnType)) {
 				result.append("\t\treturn "); //$NON-NLS-1$
@@ -393,5 +514,9 @@ public enum ClassWriterUtil {
 	
 	public static String defaultReturnValue(AnnotatedType returnType) {
 		return defaultReturnValue(returnType.getType());
+	}
+	
+	public static boolean isPackagePrivate(int mod) {
+		return !Modifier.isPublic(mod) && !Modifier.isPrivate(mod) && !Modifier.isProtected(mod);
 	}
 }

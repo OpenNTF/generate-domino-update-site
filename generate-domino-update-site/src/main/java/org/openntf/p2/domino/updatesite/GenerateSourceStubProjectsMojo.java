@@ -15,11 +15,9 @@
  */
 package org.openntf.p2.domino.updatesite;
 
-import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.defaultReturnValue;
 import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printClassSignature;
 import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printConstructors;
 import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.printMethod;
-import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.toCastableName;
 import static org.openntf.p2.domino.updatesite.util.ClassWriterUtil.writeBasicConstructorBody;
 
 import java.io.BufferedWriter;
@@ -30,6 +28,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -67,13 +66,15 @@ import java.util.zip.ZipFile;
 import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
 
-import org.apache.commons.text.StringEscapeUtils;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
+import org.openntf.p2.domino.updatesite.util.ClassWriterConfig;
+import org.openntf.p2.domino.updatesite.util.ClassWriterUtil;
 import org.openntf.p2.domino.updatesite.util.EclipseUtil;
+import org.openntf.p2.domino.updatesite.util.MethodMatcher;
 import org.w3c.dom.Document;
 
 @Mojo(name = "generateSourceProjects", requiresProject = false)
@@ -94,93 +95,6 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		"Eclipse-ExtensibleAPI", //$NON-NLS-1$
 		"Eclipse-SourceReferences" //$NON-NLS-1$
 	};
-	
-	private static final Set<String> SKIP_SOURCE_BUNDLES;
-	/**
-	 * Names of classes known to contain inner classes that are complicated
-	 * but unnecessary.
-	 */
-	private static final Set<String> SKIP_INNER_CLASSES;
-	/**
-	 * Names of bundles that should have org.eclipse.equinox.registry added
-	 * as an explicit dependency.
-	 */
-	private static final Map<String, Collection<String>> ADD_ADDITIONAL_BUNDLES;
-	/**
-	 * Classes in source bundles that we don't need and would impose odd restrictions.
-	 */
-	private static final Set<String> SKIP_SOURCE_CLASSES;
-	/**
-	 * Explicit code to add to some classes, such as those originally compiled against
-	 * an older version of Servlet
-	 */
-	private static final Map<String, String> RAW_CLASS_BODY_ADDITIONS;
-	/**
-	 * Packages to skip copying outright, as they add complexity but are not
-	 * needed
-	 */
-	private static final Set<String> SKIP_PACKAGES;
-	/**
-	 * Classes that should be marked public even if they aren't currently
-	 */
-	public static final Set<String> PUBLIC_CLASSES;
-	static {
-		SKIP_SOURCE_BUNDLES = new HashSet<>();
-		// These use downstream dependencies
-		SKIP_SOURCE_BUNDLES.add("org.eclipse.osgi"); //$NON-NLS-1$
-		SKIP_SOURCE_BUNDLES.add("org.eclipse.osgi.services"); //$NON-NLS-1$
-		
-		SKIP_INNER_CLASSES = new HashSet<>();
-		SKIP_INNER_CLASSES.add("javax.servlet.jsp.el.ImplicitObjectELResolver"); //$NON-NLS-1$
-		SKIP_INNER_CLASSES.add("org.apache.jasper.compiler.Validator"); //$NON-NLS-1$
-		SKIP_INNER_CLASSES.add("org.apache.jasper.runtime.PerThreadTagHandlerPool"); //$NON-NLS-1$
-		SKIP_INNER_CLASSES.add("org.apache.jasper.runtime.ProtectedFunctionMapper"); //$NON-NLS-1$
-		SKIP_INNER_CLASSES.add("org.apache.jasper.compiler.ELParser"); //$NON-NLS-1$
-		SKIP_INNER_CLASSES.add("org.apache.jasper.compiler.SmapUtil"); //$NON-NLS-1$
-		
-		ADD_ADDITIONAL_BUNDLES = new HashMap<>();
-		ADD_ADDITIONAL_BUNDLES.put("com.ibm.commons", Arrays.asList("org.eclipse.equinox.registry")); //$NON-NLS-1$ //$NON-NLS-2$
-		ADD_ADDITIONAL_BUNDLES.put("com.ibm.pvc.sharedbundle", Arrays.asList( //$NON-NLS-1$
-			"org.eclipse.equinox.registry", //$NON-NLS-1$
-			"org.eclipse.equinox.preferences", //$NON-NLS-1$
-			"org.eclipse.equinox.common" //$NON-NLS-1$
-		));
-		ADD_ADDITIONAL_BUNDLES.put("org.apache.commons.el", Arrays.asList( //$NON-NLS-1$
-			"com.ibm.pvc.servlet", //$NON-NLS-1$
-			"com.ibm.pvc.servlet.jsp" //$NON-NLS-1$
-		));
-		ADD_ADDITIONAL_BUNDLES.put("com.ibm.rcp.webcontainer.utils", Arrays.asList( //$NON-NLS-1$
-			"org.eclipse.equinox.registry" //$NON-NLS-1$
-		));
-		ADD_ADDITIONAL_BUNDLES.put("com.ibm.pvc.webhttpservice", Arrays.asList( //$NON-NLS-1$
-			"com.ibm.pvc.servlet" //$NON-NLS-1$
-		));
-		ADD_ADDITIONAL_BUNDLES.put("com.ibm.pvc.webcontainer", Arrays.asList( //$NON-NLS-1$
-			"com.ibm.pvc.servlet", //$NON-NLS-1$
-			"org.apache.jasper" //$NON-NLS-1$
-		));
-		
-		SKIP_SOURCE_CLASSES = new HashSet<>();
-		SKIP_SOURCE_CLASSES.add("org.apache.commons.logging.impl.Log4JLogger"); //$NON-NLS-1$
-		SKIP_SOURCE_CLASSES.add("org.apache.commons.logging.impl.LogKitLogger"); //$NON-NLS-1$
-		SKIP_SOURCE_CLASSES.add("org.apache.commons.logging.impl.AvalonLogger"); //$NON-NLS-1$
-		
-		SKIP_PACKAGES = new HashSet<>();
-		SKIP_PACKAGES.add("com.ibm.osg.util"); //$NON-NLS-1$
-		SKIP_PACKAGES.add("org.apache.commons.logging.impl"); //$NON-NLS-1$
-		SKIP_PACKAGES.add("org.eclipse.equinox.http.registry.internal"); //$NON-NLS-1$
-		
-		RAW_CLASS_BODY_ADDITIONS = new HashMap<>();
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.runtime.JspContextWrapper", "public javax.el.ELContext getELContext() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.runtime.JspFactoryImpl", "public javax.servlet.jsp.JspApplicationContext getJspApplicationContext(javax.servlet.ServletContext paramServletContext) { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.compiler.TagLibraryInfoImpl", "public javax.servlet.jsp.tagext.TagLibraryInfo[] getTagLibraryInfos() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.runtime.PageContextImpl", "public javax.el.ELContext getELContext() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.compiler.ImplicitTagLibraryInfo", "public javax.servlet.jsp.tagext.TagLibraryInfo[] getTagLibraryInfos() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.servlet.JspCServletContext", "public String getContextPath() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
-		
-		PUBLIC_CLASSES = new HashSet<>();
-		PUBLIC_CLASSES.add("org.apache.jasper.compiler.ELNode"); //$NON-NLS-1$
-	}
 
 	/**
 	 * Destination directory
@@ -255,7 +169,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				// See if we can find the source for it
 				String bundleName = bundle.getArtifactId() + '_' + bundle.getVersion() + ".jar"; //$NON-NLS-1$
 				Path sourceJar = EclipseUtil.downloadSource(getLog(), Paths.get(bundleName), sourceTemp, eclipseArtifacts, eclipseUpdateSite);
-				if(!SKIP_SOURCE_BUNDLES.contains(bundle.getArtifactId()) && sourceJar != null) {
+				if(!ClassWriterConfig.SKIP_SOURCE_BUNDLES.contains(bundle.getArtifactId()) && sourceJar != null) {
 					// If so, build a new source project for it
 					copySourceBundle(src, sourceJar, origJarPath);
 					createBuildStubs(bundleBase);
@@ -315,7 +229,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			if(StringUtil.isNotEmpty(exportedPackages)) {
 				String[] packages = StringUtil.splitString(exportedPackages, ',');
 				exportedPackages = Arrays.stream(packages)
-					.filter(p -> !SKIP_PACKAGES.contains(p))
+					.filter(p -> !ClassWriterConfig.SKIP_PACKAGES.contains(p))
 					.collect(Collectors.joining(",")); //$NON-NLS-1$
 				targetAttributes.putValue("Export-Package", exportedPackages); //$NON-NLS-1$
 			}
@@ -387,7 +301,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			}
 			
 			// Look for known-bad classes
-			for(String className : SKIP_SOURCE_CLASSES) {
+			for(String className : ClassWriterConfig.SKIP_SOURCE_CLASSES) {
 				String classPath = className.replace(".", src.getFileSystem().getSeparator()); //$NON-NLS-1$
 				Path classFile = src.resolve(classPath + ".java"); //$NON-NLS-1$
 				Files.deleteIfExists(classFile);
@@ -573,90 +487,8 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			pw.println(';');
 		}
 		
-		int constantVal = 0;
-		
 		// Now normal properties
-		for (Field f : clazz.getDeclaredFields()) {
-			if(f.isSynthetic()) {
-				continue;
-			}
-			
-			int fmod = f.getModifiers();
-			if (!f.isEnumConstant() && !Modifier.isPrivate(fmod)) {
-				pw.print("\t"); //$NON-NLS-1$
-				pw.print("public "); //$NON-NLS-1$
-				if (Modifier.isStatic(fmod)) {
-					pw.print("static "); //$NON-NLS-1$
-				}
-				// Ignore final for non-statics, since we don't care how it's set
-				if (Modifier.isStatic(fmod) && Modifier.isFinal(fmod)) {
-					pw.print("final "); //$NON-NLS-1$
-				}
-				String fieldSig = toCastableName(f.getType());
-				pw.print(fieldSig);
-				pw.print(" "); //$NON-NLS-1$
-				pw.print(f.getName());
-				
-				if (Modifier.isStatic(fmod) && Modifier.isFinal(fmod)) {
-					try {
-						f.setAccessible(true);
-						Class<?> ftype = f.getType();
-						if(String.class.equals(ftype)) {
-							try {
-								final Object cv = f.get(null);
-								if(cv == null) {
-									pw.print(" = null"); //$NON-NLS-1$
-								} else {
-									pw.print(" = "); //$NON-NLS-1$
-									pw.print('"');
-									pw.print(StringEscapeUtils.escapeJava(cv.toString()));
-									pw.print('"');
-								}
-							} catch(Throwable t) {
-								// Will be due to the string actually being derived, and could
-								//   be any number of problems. Just write nothing
-							}
-						} else if(Number.class.isAssignableFrom(ftype)) {
-							pw.print(" = "); //$NON-NLS-1$
-							final Object cv = f.get(null);
-							if(cv == null) {
-								pw.print("null"); //$NON-NLS-1$
-							} else if (Double.TYPE.equals(ftype) && Double.NaN == (double) cv) {
-								pw.print("Double.NaN"); //$NON-NLS-1$
-							} else if (Float.class.equals(ftype)) {
-								pw.print(cv);
-								pw.print('f');
-							} else {
-								pw.print(cv);
-							}
-						} else if(ftype.isPrimitive()) {
-							// Make up a fake but incrementing value, to avoid initializing
-							//   the class but allowing for switch statements to still work
-							pw.print(" = "); //$NON-NLS-1$
-							if (Byte.TYPE.equals(ftype) || Integer.TYPE.equals(ftype) || Short.TYPE.equals(ftype)) {
-								pw.print('(');
-								pw.print(ftype.getName().toString());
-								pw.print(')');
-								pw.print(String.valueOf(constantVal++));
-							} else if (Character.TYPE.equals(ftype)) {
-								pw.print("'\0'"); //$NON-NLS-1$
-							} else {
-								pw.print(defaultReturnValue(f.getType()));
-							}
-						} else {
-							pw.print(" = "); //$NON-NLS-1$
-							pw.print(defaultReturnValue(f.getType()));
-						}
-					} catch (IllegalAccessException e) {
-						getLog().error(MessageFormat.format("Encountered exception writing field {0}.{1}",
-								clazz.getName(), f.getName()), e);
-					}
-				}
-
-				pw.println(";"); //$NON-NLS-1$
-				pw.println();
-			}
-		}
+		pw.print(ClassWriterUtil.printClassFields(clazz, getLog()));
 
 		// Constructors
 		if (!clazz.isEnum()) {
@@ -676,11 +508,11 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			pw.println("\tpublic "); //$NON-NLS-1$
 			pw.print(className);
 			pw.print("()"); //$NON-NLS-1$
-			writeBasicConstructorBody(clazz, this.cl, getLog());
+			writeBasicConstructorBody(clazz, null, this.cl, getLog());
 		}
 
 		// Write out any inner classes
-		if(!SKIP_INNER_CLASSES.contains(clazz.getName())) {
+		if(!ClassWriterConfig.SKIP_INNER_CLASSES.contains(clazz.getName())) {
 			for (Class<?> innerClass : innerClasses) {
 				if(!shouldEmitClass(innerClass)) {
 					continue;
@@ -705,7 +537,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 		
 		// Add any explicit text to add
-		String extraSource = RAW_CLASS_BODY_ADDITIONS.get(clazz.getName());
+		String extraSource = ClassWriterConfig.RAW_CLASS_BODY_ADDITIONS.get(clazz.getName());
 		if(StringUtil.isNotEmpty(extraSource)) {
 			pw.println(extraSource);
 		}
@@ -728,10 +560,10 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		
 		props.put("tycho.pomless.parent", "../../pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
 		// Used by several Equinox bundles implicitly
-		props.put("jars.extra.classpath", "platform:/plugin/org.osgi.annotation.versioning"); //$NON-NLS-1$ //$NON-NLS-2$
+		props.put("jars.extra.classpath", "platform:/plugin/org.osgi.annotation.versioning,platform:/plugin/org.openntf.domino.java.api.corba.patch"); //$NON-NLS-1$ //$NON-NLS-2$
 		
 		String bundleName = bundleBase.getFileName().toString();
-		Collection<String> extraDeps = ADD_ADDITIONAL_BUNDLES.get(bundleName);
+		Collection<String> extraDeps = ClassWriterConfig.ADD_ADDITIONAL_BUNDLES.get(bundleName);
 		if(extraDeps != null) {
 			props.put("additional.bundles", String.join(",", extraDeps)); //$NON-NLS-1$ //$NON-NLS-2$
 		}
@@ -831,6 +663,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		if(clazz.isAnonymousClass()) {
 			return false;
 		}
+		if(ClassWriterConfig.SKIP_CLASSES.contains(clazz.getName())) {
+			return false;
+		}
 		// "Anonymous" seems to not be enough of what I mean - look for number-only classes like "JspClassLoader$1"
 		if(dollarIndex > -1) {
 			String postName = clazz.getName().substring(dollarIndex+1);
@@ -863,7 +698,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			return false;
 		}
 		
-		if(clazz.getPackage() != null && SKIP_PACKAGES.contains(clazz.getPackage().getName())) {
+		if(clazz.getPackage() != null && ClassWriterConfig.SKIP_PACKAGES.contains(clazz.getPackage().getName())) {
 			return false;
 		}
 		
