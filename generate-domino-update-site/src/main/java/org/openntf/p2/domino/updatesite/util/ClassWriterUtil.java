@@ -1,9 +1,9 @@
 package org.openntf.p2.domino.updatesite.util;
 
-import java.io.PrintWriter;
 import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.GenericDeclaration;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.logging.Log;
+import org.openntf.p2.domino.updatesite.GenerateSourceStubProjectsMojo;
 
 public enum ClassWriterUtil {
 	;
@@ -42,7 +43,12 @@ public enum ClassWriterUtil {
 			String boundsString = Arrays.stream(bounds)
 				.filter(bound -> !Object.class.equals(bound.getType()))
 				.map(bound -> {
-					return bound.getType().toString().replace('$', '.');
+					Type type = bound.getType();
+					if(type instanceof Class) {
+						return ((Class<?>)type).getName().replace('$', '.');
+					} else {
+						return bound.getType().toString().replace('$', '.');
+					}
 				})
 				.collect(Collectors.joining(" & ")); //$NON-NLS-1$
 			if(!boundsString.isEmpty()) {
@@ -53,15 +59,65 @@ public enum ClassWriterUtil {
 		return result.toString();
 	}
 
-	public static void printParameters(PrintWriter pw, Parameter[] parameters) {
-		pw.print('(');
+	public static String printParameters(Parameter[] parameters) {
+		StringBuilder result = new StringBuilder();
+		result.append('(');
 
 		String params = Arrays.stream(parameters)
 				.map(p -> toCastableName(p.getParameterizedType()) + " " + p.getName()) //$NON-NLS-1$
 				.collect(Collectors.joining(", ")); //$NON-NLS-1$
-		pw.print(params);
+		result.append(params);
 
-		pw.print(')');
+		result.append(')');
+		return result.toString();
+	}
+	
+	public static String printConstructors(Class<?> clazz, ClassLoader cl, String className, Log log) {
+		StringBuilder result = new StringBuilder();
+		for (Constructor<?> ctor : clazz.getDeclaredConstructors()) {
+			if(ctor.isSynthetic()) {
+				continue;
+			}
+			
+			result.append('\t');
+
+			int cmod = ctor.getModifiers();
+
+			if (Modifier.isPublic(cmod)) {
+				result.append("public "); //$NON-NLS-1$
+			} else if (Modifier.isProtected(cmod)) {
+				result.append("protected "); //$NON-NLS-1$
+			} else if (Modifier.isPrivate(cmod)) {
+				result.append("private "); //$NON-NLS-1$
+			}
+
+			if (Modifier.isNative(cmod)) {
+				result.append("native "); //$NON-NLS-1$
+			}
+
+			result.append(className);
+
+			// Inner non-static classes have an implicit first argument of their parent object;
+			//   don't emit that param
+			Parameter[] params = ctor.getParameters();
+			if(clazz.getEnclosingClass() != null) {
+				if(!Modifier.isStatic(clazz.getModifiers())) {
+					params = Arrays.stream(params).skip(1).toArray(Parameter[]::new);
+				}
+			}
+			result.append(printParameters(params));
+			Type[] exceps = ctor.getGenericExceptionTypes();
+			if (exceps != null && exceps.length > 0) {
+				List<String> excepNames = Arrays.stream(exceps).map(ClassWriterUtil::toCastableName)
+						.collect(Collectors.toList());
+				result.append(" throws "); //$NON-NLS-1$
+				result.append(String.join(", ", excepNames)); //$NON-NLS-1$
+			}
+
+			result.append(writeBasicConstructorBody(clazz, cl, log));
+			result.append('\n');
+		}
+		return result.toString();
 	}
 
 	public static String toCastableName(Type type) {
@@ -76,8 +132,21 @@ public enum ClassWriterUtil {
 		return type.toString().replace('$', '.');
 	}
 	
-	public static String toCastableName(AnnotatedType type) {
-		return toCastableName(type.getType());
+	public static String toCastableName(Class<?> clazz, AnnotatedType type) {
+		Type t = type.getType();
+		
+		// Check for the case where a class is extending a generic superclass without generics,
+		//   like HashableWeakReference
+		Type sup = clazz.getGenericSuperclass();
+		if(sup instanceof Class) {
+			if(((Class<?>)sup).getTypeParameters().length > 0) {
+				if(clazz.getTypeParameters().length == 0) {
+					return "Object"; //$NON-NLS-1$
+				}
+			}
+		}
+		
+		return toCastableName(t);
 	}
 	
 	private static String getClassName(Class<?> clazz) {
@@ -93,7 +162,7 @@ public enum ClassWriterUtil {
 		StringBuilder result = new StringBuilder();
 		
 		int modifiers = clazz.getModifiers();
-		if (Modifier.isPublic(modifiers)) {
+		if (Modifier.isPublic(modifiers) || GenerateSourceStubProjectsMojo.PUBLIC_CLASSES.contains(clazz.getName())) {
 			result.append("public "); //$NON-NLS-1$
 		}
 		if (clazz.isEnum()) {
@@ -173,14 +242,57 @@ public enum ClassWriterUtil {
 				try {
 					superClass.getDeclaredConstructor();
 				} catch (NoSuchMethodException e) {
-					// Pick the first one and make a stub call to it
-					Constructor<?> ctor = ctors[0];
-					result.append("\t\tsuper("); //$NON-NLS-1$
-					String params = Arrays.stream(ctor.getAnnotatedParameterTypes())
-							.map(t -> '(' + toCastableName(t) + ')' + defaultReturnValue(t))
-							.collect(Collectors.joining(", ")); //$NON-NLS-1$
-					result.append(params);
-					result.append(");\n"); //$NON-NLS-1$
+					// The parent may itself be an inner class - check for an applicable
+					//   "empty" constructor
+					boolean skip = false;
+					if(superClass.getEnclosingClass() != null) {
+						if(!Modifier.isStatic(superClass.getModifiers())) {
+							try {
+								superClass.getDeclaredConstructor(superClass.getEnclosingClass());
+								skip = true;
+							} catch(NoSuchMethodException e2) {
+								// No dice
+							}
+						}
+					}
+					
+					if(!skip) {
+						// Pick the first callable one and make a stub call to it
+						List<Constructor<?>> candidates = Arrays.stream(ctors)
+							.filter(c -> {
+								int mod = c.getModifiers();
+								if(Modifier.isPublic(mod) || Modifier.isProtected(mod)) {
+									return true;
+								}
+								if(!(Modifier.isPublic(mod) || Modifier.isProtected(mod) || Modifier.isPrivate(mod))) {
+									if(superClass.getPackage().getName().equals(clazz.getPackage().getName())) {
+										return true;
+									}
+								}
+								return false;
+							})
+							.collect(Collectors.toList());
+						if(!candidates.isEmpty()) {
+							// Prefer no-exception constructors
+							Constructor<?> ctor = candidates.stream()
+								.filter(c -> c.getExceptionTypes().length == 0)
+								.findFirst()
+								.orElseGet(() -> candidates.get(0));
+							result.append("\t\tsuper("); //$NON-NLS-1$
+							AnnotatedType[] params = ctor.getAnnotatedParameterTypes();
+							// Chomp off an implicit first parameter for inner classes
+							if(superClass.getEnclosingClass() != null) {
+								if(!Modifier.isStatic(superClass.getModifiers())) {
+									params = Arrays.stream(params).skip(1).toArray(AnnotatedType[]::new);
+								}
+							}
+							String paramOut = Arrays.stream(params)
+									.map(t -> '(' + toCastableName(clazz, t) + ')' + defaultReturnValue(t))
+									.collect(Collectors.joining(", ")); //$NON-NLS-1$
+							result.append(paramOut);
+							result.append(");\n"); //$NON-NLS-1$
+						}
+					}
 				}
 			}
 		} catch (ClassNotFoundException e) {
@@ -190,6 +302,80 @@ public enum ClassWriterUtil {
 			}
 		}
 		result.append("\t}\n"); //$NON-NLS-1$
+		return result.toString();
+	}
+	
+	public static String printMethod(Class<?> clazz, Method m) {
+		StringBuilder result = new StringBuilder();
+		result.append('\t');
+
+		int mmod = m.getModifiers();
+
+		if (Modifier.isPublic(mmod)) {
+			result.append("public "); //$NON-NLS-1$
+		} else if (Modifier.isProtected(mmod)) {
+			result.append("protected "); //$NON-NLS-1$
+		} else if (Modifier.isPrivate(mmod)) {
+			result.append("private "); //$NON-NLS-1$
+		}
+
+		if (Modifier.isStatic(mmod)) {
+			result.append("static "); //$NON-NLS-1$
+		}
+
+		if (Modifier.isNative(mmod)) {
+			result.append("native "); //$NON-NLS-1$
+		}
+
+		if (Modifier.isAbstract(mmod) && !clazz.isInterface()) {
+			result.append("abstract "); //$NON-NLS-1$
+		}
+
+		if (m.isDefault()) {
+			result.append("default "); //$NON-NLS-1$
+		}
+		
+		TypeVariable<Method>[] typeVars = m.getTypeParameters();
+		if(typeVars != null && typeVars.length > 0) {
+			result.append(printTypeVariables(typeVars));
+			result.append(' ');
+		}
+		
+		if (Void.TYPE.equals(m.getReturnType())) {
+			result.append("void "); //$NON-NLS-1$
+		} else {
+			Type returnType = m.getGenericReturnType();
+			result.append(toCastableName(returnType));
+			result.append(' ');
+		}
+
+		result.append(m.getName());
+
+		result.append(printParameters(m.getParameters()));
+
+		Type[] exceps = m.getGenericExceptionTypes();
+		if (exceps != null && exceps.length > 0) {
+			List<String> excepNames = Arrays.stream(exceps).map(ClassWriterUtil::toCastableName)
+					.collect(Collectors.toList());
+			result.append(" throws "); //$NON-NLS-1$
+			result.append(String.join(", ", excepNames)); //$NON-NLS-1$
+		}
+
+		if (Modifier.isNative(mmod) || Modifier.isAbstract(mmod)) {
+			result.append(';');
+		} else {
+			Type returnType = m.getReturnType();
+			result.append(" {\n"); //$NON-NLS-1$
+			if (!Void.TYPE.equals(returnType)) {
+				result.append("\t\treturn "); //$NON-NLS-1$
+				result.append(defaultReturnValue(returnType));
+				result.append(";\n"); //$NON-NLS-1$
+			}
+			result.append("\t}"); //$NON-NLS-1$
+		}
+
+		result.append('\n');
+		
 		return result.toString();
 	}
 
