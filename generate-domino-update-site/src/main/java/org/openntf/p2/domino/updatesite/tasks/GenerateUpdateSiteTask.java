@@ -87,6 +87,10 @@ public class GenerateUpdateSiteTask implements Runnable {
 	 * This is the public Eclipse update site that best matches what's found in 14.0.0.
 	 */
 	public static final String UPDATE_SITE_202112 = "https://download.eclipse.org/releases/2021-12/202112081000/"; //$NON-NLS-1$
+	/**
+	 * This is the public Eclipse update site that best matches what's found in 14.5.0.
+	 */
+	public static final String UPDATE_SITE_202312 = "https://download.eclipse.org/releases/2023-12/202312061001/"; //$NON-NLS-1$
 
 	private final Path dominoDir;
 	private final Path destDir;
@@ -117,7 +121,18 @@ public class GenerateUpdateSiteTask implements Runnable {
 				if(Files.isDirectory(plugins)) {
 					Path coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.24.0.v20210910-0750.jar"); //$NON-NLS-1$
 					if(Files.isRegularFile(coreRuntime)) {
+						if(log.isInfoEnabled()) {
+							log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.0")); //$NON-NLS-1$
+						}
 						this.eclipseUpdateSite = UPDATE_SITE_202112;
+					} else {
+						coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.30.0.v20231102-0719.jar"); //$NON-NLS-1$
+						if(Files.isRegularFile(coreRuntime)) {
+							if(log.isInfoEnabled()) {
+								log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.5")); //$NON-NLS-1$
+							}
+							this.eclipseUpdateSite = UPDATE_SITE_202312;
+						}
 					}
 				}
 			}
