@@ -17,7 +17,7 @@
 		<maven.api.version>3.8.6</maven.api.version>
 	</properties>
 
-	<url>https://openntf.org/main.nsf/project.xsp?r=project/NSF%20ODP%20Tooling</url>
+	<url>https://www.openntf.org/main.nsf/project.xsp?r=project/Domino%20Update%20Site%20Generator</url>
 	<inceptionYear>2018</inceptionYear>
 
 	<licenses>
