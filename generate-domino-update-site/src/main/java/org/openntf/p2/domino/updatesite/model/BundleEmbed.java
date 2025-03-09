@@ -17,21 +17,46 @@ package org.openntf.p2.domino.updatesite.model;
 
 import java.nio.file.Path;
 import java.text.MessageFormat;
+import java.util.Objects;
 
-import lombok.Data;
-
-@Data
 public class BundleEmbed {
-	private final String name;
-	private final Path file;
-	
-	public BundleEmbed(String name, Path file) {
-		this.name = name;
-		this.file = file;
-	}
-	
-	@Override
-	public String toString() {
-		return MessageFormat.format("[{0}: name={1}]", getClass().getSimpleName(), name); //$NON-NLS-1$
-	}
+
+    private final String name;
+    private final Path file;
+
+    public BundleEmbed(String name, Path file) {
+        this.name = name;
+        this.file = file;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public Path getFile() {
+        return file;
+    }
+
+    @Override
+    public String toString() {
+        return MessageFormat.format("[{0}: name={1}]", getClass().getSimpleName(), name); //$NON-NLS-1$
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, file);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof BundleEmbed)) {
+            return false;
+        }
+        BundleEmbed that = (BundleEmbed) o;
+        return Objects.equals(name, that.name) &&
+            Objects.equals(file, that.file);
+    }
 }
