@@ -146,7 +146,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 			for(Path eclipse : eclipsePaths) {
 				Path features = eclipse.resolve("features"); //$NON-NLS-1$
 				if(Files.isDirectory(features)) {
-					copyArtifacts(features, destFeatures, null);
+					copyArtifacts(features, destFeatures, null)    ;
 				}
 				Path plugins = eclipse.resolve("plugins"); //$NON-NLS-1$
 				if(Files.isDirectory(plugins)) {
@@ -629,7 +629,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				domino.resolve("framework").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				domino.resolve("framework").resolve("rcp").resolve("eclipse") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			)
-			.filter(path -> Files.exists(path))
+			.filter(Files::exists)
 			.collect(Collectors.toList());
 		if(eclipsePaths.isEmpty()) {
 			throw new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocatePlugins") + domino); //$NON-NLS-1$
@@ -661,6 +661,8 @@ public class GenerateUpdateSiteTask implements Runnable {
 				domino.resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				// macOS Notes client 12 pointed at Contents/MacOS
 				domino.getParent().resolve("Resources").resolve("jvm").resolve("lib").resolve("ext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				// macOS Notes client 14 pointed at Contents/Resources/ndext
+				domino.getParent().resolve("Resources").resolve("ndext").resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				// Move from jvm/lib/ext to ndext
 				domino.resolve("ndext").resolve(jarName) //$NON-NLS-1$
 		)
