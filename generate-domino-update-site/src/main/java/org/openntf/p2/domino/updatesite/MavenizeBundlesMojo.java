@@ -41,10 +41,10 @@ import org.twdata.maven.mojoexecutor.MojoExecutor;
 
 /**
  * Mavenizes any bundles in the provided XPages p2 directory.
- * 
+ * Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
  * @author Jesse Gallagher
  * @since 3.0.0
- * @see Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
+ * @see <a href="https://github.com/OpenNTF/p2-layout-provider">OpenNTF p2-layout-provider</a>
  */
 @Mojo(name="mavenizeBundles", requiresProject=false)
 public class MavenizeBundlesMojo extends AbstractMavenizeBundlesMojo {
