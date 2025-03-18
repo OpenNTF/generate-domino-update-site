@@ -73,6 +73,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 		EXCLUDED_FILENAMES.addAll(Arrays.asList(
 			Pattern.compile("^\\.DS_STORE$"), //$NON-NLS-1$
 
+			// MacOS creates "._XXX" files in non-Apple filesystems
+			Pattern.compile("^\\._.*$"), //$NON-NLS-1$
+
 			// Signature manifests will be invalid
 			Pattern.compile("^.+\\.SF$"), //$NON-NLS-1$
 			Pattern.compile("^.+\\.RSA$") //$NON-NLS-1$
