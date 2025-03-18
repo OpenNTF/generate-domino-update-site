@@ -120,6 +120,10 @@ public class GenerateUpdateSiteTask implements Runnable {
 			.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateLibExtJar", "Notes.jar", domino))); //$NON-NLS-1$ //$NON-NLS-2$
 
 		try {
+			if(containAnyFile(destDir)) {
+				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.destinationNotEmpty", destDir.toAbsolutePath())); //$NON-NLS-1$
+			}
+
 			// Which update site to use for source codes?
 			calculateEclipseUpdateSite(eclipsePaths);
 
@@ -413,8 +417,9 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private Path checkDirectory(Path dir) {
 		if(!Files.exists(dir) || !Files.isDirectory(dir)) {
 			throw new RuntimeException(
-				Messages.getString("GenerateUpdateSiteTask.directoryNotExists") + dir.toAbsolutePath()); //$NON-NLS-1$
+				Messages.getString("GenerateUpdateSiteTask.directoryNotExists", dir.toAbsolutePath())); //$NON-NLS-1$
 		}
+
 		return dir;
 	}
 
@@ -425,6 +430,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 		}
 		Files.createDirectories(dir);
 		return dir;
+	}
+
+	// Check if there are any files in the directory
+	private boolean containAnyFile(Path path) throws IOException {
+
+		try (Stream<Path> files = Files.list(path)) {
+			return files.anyMatch(Files::isRegularFile);
+		}
 	}
 
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {

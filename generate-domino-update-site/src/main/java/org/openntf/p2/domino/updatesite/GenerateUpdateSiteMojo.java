@@ -65,8 +65,12 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.unableToLocateDomino")); //$NON-NLS-1$
 		}
 		Path destDir = dest.toPath();
-		
-		new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, getLog()).run();
+
+		try {
+			new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, getLog()).run();
+		} catch(Throwable t) {
+			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.exceptionGeneratingUpdateSite"), t); //$NON-NLS-1$
+		}
 	}
 
 	private Path findDominoDir() {
