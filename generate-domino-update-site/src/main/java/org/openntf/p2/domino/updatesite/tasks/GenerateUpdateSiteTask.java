@@ -17,6 +17,7 @@ package org.openntf.p2.domino.updatesite.tasks;
 
 import com.ibm.commons.util.PathUtil;
 import com.ibm.commons.util.StringUtil;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -53,6 +54,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.plugin.logging.Log;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
@@ -139,6 +141,16 @@ public class GenerateUpdateSiteTask implements Runnable {
 			}
 
 			String baseVersion = readNotesVersion(notesJar);
+			if(StringUtils.isEmpty(baseVersion)) {
+				// This is a fallback for when the version can't be found. Mac client has no Version.properties
+				baseVersion = findVersionTxt(domino)
+					.flatMap(this::readNotesVersionAlternative)
+					.orElse(null);
+			}
+
+			if(StringUtils.isEmpty(baseVersion)) {
+				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.unableToFindVersion")); //$NON-NLS-1$
+			}
 
 			// "-1500" is taken from common suffixes seen from IBM/HCL
 			String version = baseVersion + "-1500"; //$NON-NLS-1$
@@ -557,6 +569,11 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private String readNotesVersion(Path notesJar) throws IOException {
 		try(JarFile jarFile = new JarFile(notesJar.toFile())) {
 			ZipEntry versionProps = jarFile.getEntry("lotus/domino/Version.properties"); //$NON-NLS-1$
+			if(versionProps == null) {
+				// Mac client has no Version.properties
+				return null;
+			}
+
 			try(InputStream is = jarFile.getInputStream(versionProps)) {
 				Properties props = new Properties();
 				props.load(is);
@@ -566,6 +583,28 @@ public class GenerateUpdateSiteTask implements Runnable {
 				return VersionUtil.generateNotesJarVersion(notesVersion, notesVersionDate);
 			}
 		}
+	}
+
+	private Optional<String> readNotesVersionAlternative(Path versionFile) {
+		String notesVersion = ""; //$NON-NLS-1$
+		String notesVersionDate = ""; //$NON-NLS-1$
+
+		try (BufferedReader reader = Files.newBufferedReader(versionFile, StandardCharsets.UTF_8)) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (line.startsWith("#define NOTES_VERSION_STRING")) {
+					notesVersion = line.split("\"")[1]; //$NON-NLS-1$
+				} else if (line.startsWith("#define NOTES_VERSION_DATE")) {
+					notesVersionDate = line.split("\"")[1]; //$NON-NLS-1$
+				}
+			}
+
+			return Optional.of(VersionUtil.generateNotesJarVersion(notesVersion, notesVersionDate));
+		} catch(IOException e) {
+			// Ignore
+		}
+
+		return Optional.empty();
 	}
 
 	private void buildSiteXml(final Path baseDir) throws IOException {
@@ -701,6 +740,24 @@ public class GenerateUpdateSiteTask implements Runnable {
 							   .resolve(jarName), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 						 // Move from jvm/lib/ext to ndext
 						 domino.resolve("ndext").resolve(jarName) //$NON-NLS-1$
+					 )
+					 .filter(Files::exists)
+					 .filter(Files::isRegularFile)
+					 .findFirst();
+	}
+
+	// This is for Mac Notes 14 (for now)
+	private Optional<Path> findVersionTxt(Path domino) {
+		return Stream.of(
+						 // macOS Notes client 14 pointing App file
+						 domino.resolve("Contents").resolve("Resources")
+							   .resolve("version.txt"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+						 // macOS Notes client 14 pointing Contents folder
+						 domino.resolve("Resources").resolve("version.txt"), //$NON-NLS-1$ //$NON-NLS-2$
+
+						 // MacOS Notes client 14 pointing Contents/MacOS
+						 domino.getParent().resolve("Resources").resolve("version.txt") //$NON-NLS-1$ //$NON-NLS-2$
 					 )
 					 .filter(Files::exists)
 					 .filter(Files::isRegularFile)

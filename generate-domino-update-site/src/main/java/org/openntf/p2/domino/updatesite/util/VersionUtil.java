@@ -24,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.ibm.commons.util.StringUtil;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Utilities for working with Notes version identifiers.
@@ -34,7 +35,7 @@ import com.ibm.commons.util.StringUtil;
 public enum VersionUtil {
 	;
 
-	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)_(\\d+)"); //$NON-NLS-1$
+	private static final Pattern NOTESJAR_BUILD_PATTERN = Pattern.compile("Build V(\\d\\d)(\\d)(\\d)(?:FP(\\d+))?_\\d+"); //$NON-NLS-1$
 	private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd"); //$NON-NLS-1$
 	private static final DateTimeFormatter NOTESVERSIONDATE_FORMAT = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US); // U-S-A! U-S-A! //$NON-NLS-1$
 	private static final Pattern RELEASE_PATTERN = Pattern.compile("Release (\\d+\\.\\d+(\\.\\d+)?)(FP(\\d+))?"); //$NON-NLS-1$
@@ -49,6 +50,10 @@ public enum VersionUtil {
 	 * @return a version number suitable for OSGi use
 	 */
 	public static String generateNotesJarVersion(String notesVersion, String notesVersionDate) {
+		if(StringUtils.isAnyEmpty(notesVersion, notesVersionDate)) {
+			throw new IllegalArgumentException("Both notesVersion and notesVersionDate must be non-empty"); //$NON-NLS-1$
+		}
+
 		StringBuilder result = new StringBuilder();
 		Matcher releaseMatcher = RELEASE_PATTERN.matcher(notesVersion);
 		if(releaseMatcher.matches()) {
@@ -67,7 +72,17 @@ public enum VersionUtil {
 			// Beta builds have special formatting
 			Matcher buildMatcher = NOTESJAR_BUILD_PATTERN.matcher(notesVersion);
 			if(buildMatcher.matches()) {
-				result.append(buildMatcher.group(1) + '.' + buildMatcher.group(2) + '.' + buildMatcher.group(3));
+				result.append(buildMatcher.group(1))
+					  .append('.')
+					  .append(buildMatcher.group(2))
+					  .append('.')
+					  .append(buildMatcher.group(3));
+
+				// Mac Notes are not coming from Notes.jar
+				String fp = buildMatcher.group(4);
+				if(StringUtil.isNotEmpty(fp)) {
+					result.append(String.format("%03d", Integer.parseInt(fp, 10))); //$NON-NLS-1$
+				}
 			} else {
 				result.append(notesVersion);
 			}
