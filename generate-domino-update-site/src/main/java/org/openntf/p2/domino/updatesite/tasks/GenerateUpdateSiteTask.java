@@ -120,10 +120,6 @@ public class GenerateUpdateSiteTask implements Runnable {
 			.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateLibExtJar", "Notes.jar", domino))); //$NON-NLS-1$ //$NON-NLS-2$
 
 		try {
-			if(containAnyFile(destDir)) {
-				throw new RuntimeException(Messages.getString("GenerateUpdateSiteTask.destinationNotEmpty", destDir.toAbsolutePath())); //$NON-NLS-1$
-			}
-
 			// Which update site to use for source codes?
 			calculateEclipseUpdateSite(eclipsePaths);
 
@@ -161,7 +157,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 
 			createNotesJarWrapper(notesJar, baseVersion, version, destPlugins);
 			createsFauxNotesJarFragment(notesJar, version, destPlugins);
-			createXspBootstrap(domino, version, destPlugins);
+
+			Optional<Path> xspBootstrap = findXspBootstrap(domino);
+			if(xspBootstrap.isPresent()) {
+				createXspBootstrap(xspBootstrap.get(), domino, version, destPlugins);
+			} else {
+				log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+			}
 
 			// Build a NAPI fragment if on 12.0.2+
 			findNapiJar(domino).ifPresent(napiJar -> createNapiBundle(napiJar, version, destPlugins));
@@ -289,58 +291,51 @@ public class GenerateUpdateSiteTask implements Runnable {
 		}
 	}
 
-	private void createXspBootstrap(Path domino, String version, Path destPlugins) throws IOException {
+	private void createXspBootstrap(Path xspBootstrap, Path domino, String version, Path destPlugins) throws IOException {
 		// Create an XSP HTTP Bootstrap bundle, if possible
-		Optional<Path> xspBootstrap = findXspBootstrap(domino);
-		if(xspBootstrap.isPresent()) {
-			String bundleId = "com.ibm.xsp.http.bootstrap"; //$NON-NLS-1$
-			Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
-			try(FileSystem zip = NSFODPUtil.openZipPath(plugin)) {
-				Path root = zip.getPath("/"); //$NON-NLS-1$
-				// Write the manifest file to declare it a fragment
-				Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
-				Files.createDirectories(manifestPath.getParent());
-				try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.CREATE)) {
-					Manifest manifest = new Manifest();
-					Attributes attrs = manifest.getMainAttributes();
-					attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
-					if(!this.flattenEmbeds) {
-						attrs.putValue("Bundle-ClassPath", "xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$
-					}
-					attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
-					attrs.putValue("Bundle-Name", "XSP HTTP Bootstrap"); //$NON-NLS-1$ //$NON-NLS-2$
-					attrs.putValue("Bundle-SymbolicName", bundleId); //$NON-NLS-1$
-					attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
-					attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
-					// Find the packages to export
-					try(JarFile notesJarFile = new JarFile(xspBootstrap.get().toFile())) {
-						String exports = notesJarFile.stream()
-													 .filter(jarEntry -> StringUtil.toString(jarEntry.getName())
-																				   .endsWith(".class")) //$NON-NLS-1$
-													 .map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
-													 .filter(Objects::nonNull)
-													 .map(path -> path.toString().replace('/', '.').replace('\\', '.'))
-													 .distinct()
-													 .filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
-													 .collect(Collectors.joining(",")); //$NON-NLS-1$
-						attrs.putValue("Export-Package", exports); //$NON-NLS-1$
-					}
-					manifest.write(os);
+		String bundleId = "com.ibm.xsp.http.bootstrap"; //$NON-NLS-1$
+		Path plugin = destPlugins.resolve(bundleId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+		try(FileSystem zip = NSFODPUtil.openZipPath(plugin)) {
+			Path root = zip.getPath("/"); //$NON-NLS-1$
+			// Write the manifest file to declare it a fragment
+			Path manifestPath = root.resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
+			Files.createDirectories(manifestPath.getParent());
+			try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.CREATE)) {
+				Manifest manifest = new Manifest();
+				Attributes attrs = manifest.getMainAttributes();
+				attrs.putValue("Manifest-Version", "1.0"); //$NON-NLS-1$ //$NON-NLS-2$
+				if(!this.flattenEmbeds) {
+					attrs.putValue("Bundle-ClassPath", "xsp.http.bootstrap.jar"); //$NON-NLS-1$ //$NON-NLS-2$
 				}
-
-				// Either copy in the contents of the source or just bring in the JAR outright
-				if(this.flattenEmbeds) {
-					try(FileSystem notesFs = NSFODPUtil.openZipPath(xspBootstrap.get())) {
-						Path notesRoot = notesFs.getPath("/"); //$NON-NLS-1$
-						copyBundleEmbed(notesRoot, root);
-					}
-				} else {
-					Files.copy(xspBootstrap.get(), root.resolve("xsp.http.bootstrap.jar")); //$NON-NLS-1$
+				attrs.putValue("Bundle-Vendor", "IBM"); //$NON-NLS-1$ //$NON-NLS-2$
+				attrs.putValue("Bundle-Name", "XSP HTTP Bootstrap"); //$NON-NLS-1$ //$NON-NLS-2$
+				attrs.putValue("Bundle-SymbolicName", bundleId); //$NON-NLS-1$
+				attrs.putValue("Bundle-Version", version); //$NON-NLS-1$
+				attrs.putValue("Bundle-ManifestVersion", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+				// Find the packages to export
+				try(JarFile notesJarFile = new JarFile(xspBootstrap.toFile())) {
+					String exports = notesJarFile.stream()
+												 .filter(jarEntry -> StringUtil.toString(jarEntry.getName())
+																			   .endsWith(".class")) //$NON-NLS-1$
+												 .map(jarEntry -> Paths.get(jarEntry.getName()).getParent())
+												 .filter(Objects::nonNull)
+												 .map(path -> path.toString().replace('/', '.').replace('\\', '.'))
+												 .distinct()
+												 .filter(name -> !"META-INF".equals(name)) //$NON-NLS-1$
+												 .collect(Collectors.joining(",")); //$NON-NLS-1$
+					attrs.putValue("Export-Package", exports); //$NON-NLS-1$
 				}
+				manifest.write(os);
 			}
-		} else {
-			if(log.isInfoEnabled()) {
-				log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+
+			// Either copy in the contents of the source or just bring in the JAR outright
+			if(this.flattenEmbeds) {
+				try(FileSystem notesFs = NSFODPUtil.openZipPath(xspBootstrap)) {
+					Path notesRoot = notesFs.getPath("/"); //$NON-NLS-1$
+					copyBundleEmbed(notesRoot, root);
+				}
+			} else {
+				Files.copy(xspBootstrap, root.resolve("xsp.http.bootstrap.jar")); //$NON-NLS-1$
 			}
 		}
 	}
@@ -430,14 +425,6 @@ public class GenerateUpdateSiteTask implements Runnable {
 		}
 		Files.createDirectories(dir);
 		return dir;
-	}
-
-	// Check if there are any files in the directory
-	private boolean containAnyFile(Path path) throws IOException {
-
-		try (Stream<Path> files = Files.list(path)) {
-			return files.anyMatch(Files::isRegularFile);
-		}
 	}
 
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {

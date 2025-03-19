@@ -15,18 +15,29 @@
  */
 package org.openntf.p2.domino.updatesite;
 
+import com.ibm.commons.util.io.FileUtil;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.openntf.p2.domino.updatesite.docker.DockerFileManager;
+import org.openntf.p2.domino.updatesite.docker.DockerFileManager.Builder;
+import org.openntf.p2.domino.updatesite.docker.DockerFileManagerException;
 import org.openntf.p2.domino.updatesite.tasks.GenerateUpdateSiteTask;
 
 @Mojo(name="generateUpdateSite", requiresProject=false)
@@ -37,13 +48,32 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	 */
 	@Parameter(property="src", required=false, defaultValue="${notes-program}")
 	private File src;
-	
+
+	/**
+	 * Source Docker container to use. If srcImage is also given, this will be ignored.
+	 */
+	@Parameter(property="srcContainer", required=false)
+	private String srcContainer;
+
+	/**
+	 * Source Docker image to use. If given, a temporary container will be created
+	 */
+	@Parameter(property="srcImageId", required=false)
+	private String srcImageId;
+
 	/**
 	 * Destination directory
 	 */
 	@Parameter(property="dest", required=true)
 	private File dest;
-	
+
+	/**
+	 * The path to the Domino installation directory inside the Docker container.
+	 * This is only used if srcImageId is specified.
+	 */
+	@Parameter(property="dockerDominoDir", required=false, defaultValue="/opt/hcl/domino/notes/latest/linux")
+	private String dockerDominoDir;
+
 	/**
 	 * Whether embedded JARs should be "flattened" into their containing
 	 * bundles (defaults to false).
@@ -55,6 +85,24 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 
 	@Override
 	public void execute() throws MojoExecutionException, MojoFailureException {
+		Path destPath = dest.toPath();
+
+		if (Files.exists(destPath) && Files.isDirectory(destPath) && Objects.requireNonNull(destPath.toFile().list()).length > 0) {
+		    try {
+		        FileUtils.cleanDirectory(destPath.toFile());
+		    } catch (IOException e) {
+		        throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.destinationCantClear", destPath), e); //$NON-NLS-1$
+		    }
+		}
+
+		if(StringUtils.isNotEmpty(srcContainer) || StringUtils.isNotEmpty(srcImageId)) {
+			executeWithDocker(destPath);
+		} else {
+			executeWithDomino(destPath);
+		}
+	}
+
+	private void executeWithDomino(Path destDir) throws MojoExecutionException {
 		Path dominoDir;
 		if(src != null) {
 			dominoDir = src.toPath();
@@ -64,13 +112,43 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 		if(dominoDir == null || !Files.exists(dominoDir)) {
 			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.unableToLocateDomino")); //$NON-NLS-1$
 		}
-		Path destDir = dest.toPath();
 
 		try {
 			new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, getLog()).run();
 		} catch(Throwable t) {
 			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.exceptionGeneratingUpdateSite"), t); //$NON-NLS-1$
 		}
+	}
+
+	private void executeWithDocker(Path destDir) throws MojoExecutionException {
+		Builder dockerBuilder = DockerFileManager.newBuilder()
+		.withImage(srcImageId)
+		.withContainer(srcContainer);
+
+		try(DockerFileManager dockerFileManager = dockerBuilder.build()) {
+
+			Path localPath = extractDockerContent(dockerFileManager); //$NON-NLS-1$
+
+			new GenerateUpdateSiteTask(localPath, destDir, flattenEmbeds, getLog()).run();
+		} catch(Throwable t) {
+			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.dockerHostIssue", srcContainer, srcImageId), t); //$NON-NLS-1$
+		}
+
+	}
+
+	// This mothod will extract the content of the Docker container to a temporary directory
+	private Path extractDockerContent(DockerFileManager dfm) throws DockerFileManagerException {
+		Log log = getLog();
+		Path ctDominoDir = Paths.get(dockerDominoDir);
+
+		log.info(Messages.getString("GenerateUpdateSiteMojo.dockerPathExtracting", dockerDominoDir)); //$NON-NLS-1$
+
+		List<Path> pathsToExtract = Arrays.asList(
+			ctDominoDir.resolve("osgi"),
+			ctDominoDir.resolve("ndext")
+		);
+
+		return dfm.downloadFileResources(pathsToExtract, true);
 	}
 
 	private Path findDominoDir() {
