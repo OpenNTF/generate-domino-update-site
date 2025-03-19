@@ -25,6 +25,8 @@
 		<mojo-executor.version>2.4.1</mojo-executor.version>
 		<tycho-osgi.version>3.13.0.v20180226-1711</tycho-osgi.version>
 		<commons-lang3.version>3.17.0</commons-lang3.version>
+		<commons-compress.version>1.27.1</commons-compress.version>
+		<commons-io.version>2.18.0</commons-io.version>
 		<xz.version>1.10</xz.version>
 		<junit.version>5.12.0</junit.version>
 	</properties>
@@ -118,6 +120,16 @@
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
 			<version>${commons-lang3.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-compress</artifactId>
+			<version>${commons-compress.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>${commons-io.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.tukaani</groupId>
