@@ -61,6 +61,9 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	@Parameter(property="srcImageId", required=false)
 	private String srcImageId;
 
+	@Parameter(property="onlyDots", required=false, defaultValue="false")
+	private boolean onlyDots = false;
+
 	/**
 	 * Destination directory
 	 */
@@ -114,7 +117,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 		}
 
 		try {
-			new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, getLog()).run();
+			new GenerateUpdateSiteTask(dominoDir, destDir, flattenEmbeds, onlyDots, getLog()).run();
 		} catch(Throwable t) {
 			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.exceptionGeneratingUpdateSite"), t); //$NON-NLS-1$
 		}
@@ -129,7 +132,7 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 
 			Path localPath = extractDockerContent(dockerFileManager); //$NON-NLS-1$
 
-			new GenerateUpdateSiteTask(localPath, destDir, flattenEmbeds, getLog()).run();
+			new GenerateUpdateSiteTask(localPath, destDir, flattenEmbeds, onlyDots, getLog()).run();
 		} catch(Throwable t) {
 			throw new MojoExecutionException(Messages.getString("GenerateUpdateSiteMojo.dockerHostIssue", srcContainer, srcImageId), t); //$NON-NLS-1$
 		}
@@ -143,8 +146,10 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 
 		log.info(Messages.getString("GenerateUpdateSiteMojo.dockerPathExtracting", dockerDominoDir)); //$NON-NLS-1$
 
+		String osgiDir = onlyDots ? "osgi-dots":"osgi";
+
 		List<Path> pathsToExtract = Arrays.asList(
-			ctDominoDir.resolve("osgi"),
+			ctDominoDir.resolve(osgiDir),
 			ctDominoDir.resolve("ndext")
 		);
 

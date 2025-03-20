@@ -100,14 +100,16 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private final Path dominoDir;
 	private final Path destDir;
 	private final boolean flattenEmbeds;
+	private final boolean onlyDots;
 	private final Log log;
 	private String eclipseUpdateSite = UPDATE_SITE_NEON;
 
-	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, Log log) {
+	public GenerateUpdateSiteTask(Path dominoDir, Path destDir, boolean flattenEmbeds, boolean onlyDots, Log log) {
 		super();
 		this.dominoDir = dominoDir;
 		this.destDir = destDir;
 		this.flattenEmbeds = flattenEmbeds;
+		this.onlyDots = onlyDots;
 		this.log = log;
 	}
 
@@ -115,7 +117,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 	public void run() {
 		Path domino = checkDirectory(dominoDir);
 
-		List<Path> eclipsePaths = findEclipsePaths(domino);
+		List<Path> eclipsePaths = onlyDots ? findEclipsePathsForDots(domino) : findEclipsePaths(domino);
 		Path notesJar = findNotesJar(domino)
 			.orElseThrow(() -> new IllegalArgumentException(Messages.getString("GenerateUpdateSiteTask.unableToLocateLibExtJar", "Notes.jar", domino))); //$NON-NLS-1$ //$NON-NLS-2$
 
@@ -158,15 +160,18 @@ public class GenerateUpdateSiteTask implements Runnable {
 			createNotesJarWrapper(notesJar, baseVersion, version, destPlugins);
 			createsFauxNotesJarFragment(notesJar, version, destPlugins);
 
-			Optional<Path> xspBootstrap = findXspBootstrap(domino);
-			if(xspBootstrap.isPresent()) {
-				createXspBootstrap(xspBootstrap.get(), domino, version, destPlugins);
-			} else {
-				log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
-			}
+			// Skip xspBootstrap and NAPI if only generating dots
+			if(! onlyDots) {
+				Optional<Path> xspBootstrap = findXspBootstrap(domino);
+				if(xspBootstrap.isPresent()) {
+					createXspBootstrap(xspBootstrap.get(), domino, version, destPlugins);
+				} else {
+					log.info(Messages.getString("GenerateUpdateSiteTask.0")); //$NON-NLS-1$
+				}
 
-			// Build a NAPI fragment if on 12.0.2+
-			findNapiJar(domino).ifPresent(napiJar -> createNapiBundle(napiJar, version, destPlugins));
+				// Build a NAPI fragment if on 12.0.2+
+				findNapiJar(domino).ifPresent(napiJar -> createNapiBundle(napiJar, version, destPlugins));
+			}
 
 			// Create site.xml
 			buildSiteXml(dest);
@@ -430,6 +435,13 @@ public class GenerateUpdateSiteTask implements Runnable {
 	private void copyArtifacts(Path sourceDir, Path destDir, Document eclipseArtifacts) throws Exception {
 		try(Stream<Path> pluginStream = Files.list(sourceDir)) {
 			pluginStream.forEach(artifact -> {
+				if(Files.isRegularFile(artifact) && ! artifact.toString().toLowerCase().endsWith(".jar")) { //$NON-NLS-1$
+					log.info("Skipping non-JAR file " + artifact.getFileName().toString()); //$NON-NLS-1$
+
+					// Skip non-JAR files
+					return;
+				}
+
 				if(log.isInfoEnabled()) {
 					log.info(Messages.getString("GenerateUpdateSiteTask.copying") + artifact.getFileName().toString()); //$NON-NLS-1$
 				}
@@ -698,6 +710,22 @@ public class GenerateUpdateSiteTask implements Runnable {
 											// Windows Notes
 											domino.resolve("framework").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 											domino.resolve("framework").resolve("rcp").resolve("eclipse") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+										)
+										.filter(Files::exists)
+										.collect(Collectors.toList());
+		if(eclipsePaths.isEmpty()) {
+			throw new IllegalArgumentException(
+				Messages.getString("GenerateUpdateSiteTask.unableToLocatePlugins") + domino); //$NON-NLS-1$
+		}
+		return eclipsePaths;
+	}
+
+	private List<Path> findEclipsePathsForDots(Path domino) {
+		// Only for DOTS
+		List<Path> eclipsePaths = Stream.of(
+											// Domino Server with DOTS
+											domino.resolve("osgi-dots").resolve("shared").resolve("eclipse"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+											domino.resolve("osgi-dots").resolve("rcp").resolve("eclipse") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 										)
 										.filter(Files::exists)
 										.collect(Collectors.toList());
