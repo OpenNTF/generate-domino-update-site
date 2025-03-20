@@ -61,6 +61,9 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 	@Parameter(property="srcImageId", required=false)
 	private String srcImageId;
 
+	/**
+	 * Whether to generate update site for "DOTS" plugins.
+	 */
 	@Parameter(property="onlyDots", required=false, defaultValue="false")
 	private boolean onlyDots = false;
 
