@@ -153,7 +153,8 @@ public class GenerateUpdateSiteMojo extends AbstractMojo {
 
 		List<Path> pathsToExtract = Arrays.asList(
 			ctDominoDir.resolve(osgiDir),
-			ctDominoDir.resolve("ndext")
+			ctDominoDir.resolve("ndext"),
+			ctDominoDir.resolve("jvm")
 		);
 
 		return dfm.downloadFileResources(pathsToExtract, true);
