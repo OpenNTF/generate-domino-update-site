@@ -20,6 +20,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
 import java.util.Locale;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -102,5 +104,21 @@ public enum VersionUtil {
 		result.append('.');
 		result.append(TIMESTAMP_FORMAT.format(parsedDate));
 		return result.toString();
+	}
+
+	public static String getBundleName(Attributes manifestAttributes) {
+		String symbolicName = manifestAttributes.getValue("Bundle-SymbolicName"); //$NON-NLS-1$
+
+		if(StringUtil.isEmpty(symbolicName)) {
+			// This should never happen, but just in case
+			return null;
+		}
+
+		if(symbolicName.contains(";")) {
+			// If it has a semicolon, then it's a composite symbolic name
+			return symbolicName.substring(0, symbolicName.indexOf(';'));
+		} else {
+			return symbolicName;
+		}
 	}
 }

@@ -479,6 +479,17 @@ public class GenerateUpdateSiteTask implements Runnable {
 					jarManifest = new Manifest(is);
 				}
 				Attributes attrs = jarManifest.getMainAttributes();
+
+				// com.ibm.dots is a special case where the file name has no version. Fix it
+				String jarFileName = source.getFileName().toString();
+				if(jarFileName.equals(VersionUtil.getBundleName(attrs) + ".jar")) { //$NON-NLS-1$
+					// Use the version from the manifest
+					String version = attrs.getValue("Bundle-Version"); //$NON-NLS-1$
+					if(StringUtil.isNotEmpty(version)) {
+						dest = destDir.resolve(VersionUtil.getBundleName(attrs) + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$
+					}
+				}
+
 				String classpath = attrs.getValue("Bundle-ClassPath"); //$NON-NLS-1$
 
 				if(this.flattenEmbeds && StringUtil.isNotEmpty(classpath)) {
