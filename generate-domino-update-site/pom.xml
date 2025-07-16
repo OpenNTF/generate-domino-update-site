@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.openntf.p2</groupId>
 	<artifactId>generate-domino-update-site</artifactId>
-	<version>5.1.0-SNAPSHOT</version>
+	<version>6.0.0-SNAPSHOT</version>
 	<packaging>maven-plugin</packaging>
 
 	<name>generate-domino-update-site</name>
@@ -12,12 +12,27 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
-		
+		<maven.compiler.release>8</maven.compiler.release>
+
 		<!-- Maven API version. This version should be supported by m2e -->
-		<maven.api.version>3.8.6</maven.api.version>
+		<maven.api.version>3.9.9</maven.api.version>
+
+		<docker-java.version>3.4.2</docker-java.version>
+		<maven-plugin-annotations.version>3.15.1</maven-plugin-annotations.version>
+		<plexus-utils.version>3.6.0</plexus-utils.version>
+		<com.ibm.commons.version>9.0.0</com.ibm.commons.version>
+		<org.openntf.nsfodp.commons.version>4.0.5</org.openntf.nsfodp.commons.version>
+		<org.eclipse.osgi.version>3.7.1</org.eclipse.osgi.version>
+		<mojo-executor.version>2.4.1</mojo-executor.version>
+		<tycho-osgi.version>3.13.0.v20180226-1711</tycho-osgi.version>
+		<commons-lang3.version>3.17.0</commons-lang3.version>
+		<commons-compress.version>1.27.1</commons-compress.version>
+		<commons-io.version>2.18.0</commons-io.version>
+		<xz.version>1.10</xz.version>
+		<junit.version>5.12.0</junit.version>
 	</properties>
 
-	<url>https://openntf.org/main.nsf/project.xsp?r=project/NSF%20ODP%20Tooling</url>
+	<url>https://www.openntf.org/main.nsf/project.xsp?r=project/Domino%20Update%20Site%20Generator</url>
 	<inceptionYear>2018</inceptionYear>
 
 	<licenses>
@@ -36,7 +51,7 @@
 			<url>https://artifactory.openntf.org/openntf</url>
 		</repository>
 	</distributionManagement>
-	
+
 	<repositories>
 		<repository>
 			<id>artifactory.openntf.org</id>
@@ -57,101 +72,112 @@
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-plugin-api</artifactId>
 			<version>${maven.api.version}</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-core</artifactId>
 			<version>${maven.api.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.maven</groupId>
-			<artifactId>maven-project</artifactId>
-			<version>2.2.1</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.maven.plugin-tools</groupId>
 			<artifactId>maven-plugin-annotations</artifactId>
-			<version>3.7.1</version>
+			<version>${maven-plugin-annotations.version}</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.codehaus.plexus</groupId>
 			<artifactId>plexus-utils</artifactId>
-			<version>3.5.0</version>
+			<version>${plexus-utils.version}</version>
 		</dependency>
-		
+
 		<dependency>
-		    <groupId>com.ibm.sbt</groupId>
-		    <artifactId>com.ibm.commons</artifactId>
-		    <version>9.0.0</version>
+			<groupId>com.ibm.sbt</groupId>
+			<artifactId>com.ibm.commons</artifactId>
+			<version>${com.ibm.commons.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.openntf.nsfodp</groupId>
 			<artifactId>org.openntf.nsfodp.commons</artifactId>
-			<version>3.9.0</version>
+			<version>${org.openntf.nsfodp.commons.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.osgi</groupId>
 			<artifactId>org.eclipse.osgi</artifactId>
-			<version>3.7.1</version>
+			<version>${org.eclipse.osgi.version}</version>
 		</dependency>
-
 		<dependency>
 			<groupId>org.twdata.maven</groupId>
 			<artifactId>mojo-executor</artifactId>
-			<version>2.4.0</version>
+			<version>${mojo-executor.version}</version>
 		</dependency>
-
-		<dependency>
-			<groupId>org.projectlombok</groupId>
-			<artifactId>lombok</artifactId>
-			<version>1.18.26</version>
-			<scope>provided</scope>
-		</dependency>
-
 		<dependency>
 			<groupId>org.eclipse.tycho</groupId>
 			<artifactId>org.eclipse.osgi</artifactId>
-			<version>3.13.0.v20180226-1711</version>
+			<version>${tycho-osgi.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
-			<version>3.12.0</version>
+			<version>${commons-lang3.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-compress</artifactId>
+			<version>${commons-compress.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>${commons-io.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.tukaani</groupId>
 			<artifactId>xz</artifactId>
-			<version>1.9</version>
+			<version>${xz.version}</version>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter-engine</artifactId>
-			<version>5.9.2</version>
+			<version>${junit.version}</version>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-core</artifactId>
+			<version>${docker-java.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-transport-httpclient5</artifactId>
+			<version>${docker-java.version}</version>
+		</dependency>
+
 	</dependencies>
-	
+
 	<prerequisites>
 		<maven>3.0.1</maven>
 	</prerequisites>
-	
+
 	<build>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.1</version>
+				<version>3.14.0</version>
 			</plugin>
-		
+
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-plugin-plugin</artifactId>
-				<version>3.5.1</version>
+				<version>3.15.1</version>
 				<configuration>
 					<goalPrefix>generate-domino-update-site</goalPrefix>
 					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
+
 				</configuration>
 				<executions>
 					<execution>
@@ -168,7 +194,7 @@
 					</execution>
 				</executions>
 			</plugin>
-			
+
 
 			<plugin>
 				<groupId>com.mycila</groupId>
@@ -179,13 +205,13 @@
 					<header>license.txt</header>
 					<excludes>
 						<exclude>pom.xml</exclude>
-			            <exclude>**/README</exclude>
-			            <exclude>src/test/resources/**</exclude>
-			            <exclude>src/main/resources/**</exclude>
+						<exclude>**/README</exclude>
+						<exclude>src/test/resources/**</exclude>
+						<exclude>src/main/resources/**</exclude>
 					</excludes>
 					<properties>
-						<owner>Jesse Gallagher</owner>
-						<copyrightYear>2023</copyrightYear>
+						<owner>Contributors to the generate-domino-update-site project</owner>
+						<copyrightYear>2025</copyrightYear>
 					</properties>
 				</configuration>
 			</plugin>
@@ -193,7 +219,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-enforcer-plugin</artifactId>
-				<version>3.0.0-M1</version>
+				<version>3.5.0</version>
 				<executions>
 					<execution>
 						<id>enforce-maven-and-java</id>
