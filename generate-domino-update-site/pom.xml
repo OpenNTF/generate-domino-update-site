@@ -210,8 +210,8 @@
 						<exclude>src/main/resources/**</exclude>
 					</excludes>
 					<properties>
-						<owner>Jesse Gallagher</owner>
-						<copyrightYear>2023</copyrightYear>
+						<owner>Contributors to the generate-domino-update-site project</owner>
+						<copyrightYear>2025</copyrightYear>
 					</properties>
 				</configuration>
 			</plugin>
