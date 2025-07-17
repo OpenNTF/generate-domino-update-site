@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2023 Jesse Gallagher
+ * Copyright © 2018-2025 Contributors to the generate-domino-update-site project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,39 @@
 package org.openntf.p2.domino.updatesite.test.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 import org.openntf.p2.domino.updatesite.util.VersionUtil;
 
 @SuppressWarnings("nls")
 public class TestVersionUtil {
+
+	@Test
+	public void testTrivial() {
+		assertThrows(IllegalArgumentException.class, () -> VersionUtil.generateNotesJarVersion(null, null));
+		assertThrows(IllegalArgumentException.class, () -> VersionUtil.generateNotesJarVersion("", "October 16, 2019"));
+		assertThrows(IllegalArgumentException.class, () -> VersionUtil.generateNotesJarVersion(null, "October 16, 2019"));
+		assertThrows(IllegalArgumentException.class, () -> VersionUtil.generateNotesJarVersion("Release 14.0FP2", ""));
+		assertThrows(IllegalArgumentException.class, () -> VersionUtil.generateNotesJarVersion("Release 14.0FP2", null));
+	}
+
 	@Test
 	public void testMacV11Beta2() {
 		assertEquals("11.0.0.20191016", VersionUtil.generateNotesJarVersion("Build V1100_10162019", "October 16, 2019"));
 	}
-	
+
+	@Test
+	public void testHypotheticalV145EA() {
+		assertEquals("14.5.0.20241204", VersionUtil.generateNotesJarVersion("Build V1450_12042024", "December 04, 2024"));
+	}
+
+	@Test
+	public void testHypotheticalMacVersion() {
+		assertEquals("14.0.0003.20241118", VersionUtil.generateNotesJarVersion("Build V1400FP3_11182024", "November 18, 2024"));
+	}
+
 	@Test
 	public void testDominoV10() {
 		assertEquals("10.0.0.20180919", VersionUtil.generateNotesJarVersion("Release 10.0", "September 19, 2018"));
@@ -51,4 +73,5 @@ public class TestVersionUtil {
 	public void testHypotheticalV10FP1() {
 		assertEquals("10.0.0001.20180115", VersionUtil.generateNotesJarVersion("Release 10.0FP1", "January 15, 2018"));
 	}
+
 }
