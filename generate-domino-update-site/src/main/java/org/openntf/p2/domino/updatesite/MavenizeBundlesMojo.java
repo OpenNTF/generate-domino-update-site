@@ -1,5 +1,5 @@
 /**
- * Copyright © 2018-2023 Jesse Gallagher
+ * Copyright © 2018-2025 Contributors to the generate-domino-update-site project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,10 +41,10 @@ import org.twdata.maven.mojoexecutor.MojoExecutor;
 
 /**
  * Mavenizes any bundles in the provided XPages p2 directory.
- * 
+ * Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
  * @author Jesse Gallagher
  * @since 3.0.0
- * @see Consider using <a href="https://github.com/OpenNTF/p2-layout-provider">p2-layout-provider</a> instead
+ * @see <a href="https://github.com/OpenNTF/p2-layout-provider">OpenNTF p2-layout-provider</a>
  */
 @Mojo(name="mavenizeBundles", requiresProject=false)
 public class MavenizeBundlesMojo extends AbstractMavenizeBundlesMojo {

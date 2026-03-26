@@ -2,8 +2,7 @@ package org.openntf.p2.domino.updatesite.util;
 
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
-
-import edu.emory.mathcs.backport.java.util.Arrays;
+import java.util.Arrays;
 
 public class MethodMatcher {
 	private final String name;

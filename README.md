@@ -6,7 +6,7 @@ To use the tool from the command line, either add the OpenNTF Maven repository (
 
 ## Requirements
 
-- A Notes or Domino installation filesystem-accessible to the running computer
+- A Notes/Domino installation accessible on the running computer, or Domino Docker container/image on the local Docker daemon.
 - Maven 3+
 - Java 8+
 
@@ -16,11 +16,11 @@ To use the tool from the command line, either add the OpenNTF Maven repository (
 
 The tool performs several tasks to generate its result:
 
-1. Copies the features and plugins from the  `osgi/rcp/eclipe` and `osgi/shared/eclipse`  directories, converting unpacked folder artifacts back into Jar files
+1. Copies the features and plugins from the  `osgi/rcp/eclipe` and `osgi/shared/eclipse`  directories, converting unpacked folder artifacts back into Jar files. In `dotsOnly` mode, it copies `osgi-dots/rcp/eclipse` and `osgi-dots/shared/eclipse`  directories.
 2. If pointed to a Windows Notes installation directory, it will do the same with the `framework` directory, which contains UI-specific plugins
 3. Generates `com.ibm.notes.java.api` and `com.ibm.notes.java.api.win32.linux` bundles using Domino's Notes.jar with a version matching today's date, if needed
 4. Generates a `com.ibm.xsp.http.bootstrap` bundle in similar fashion, when the JAR is available in the source
-5. Downloads source bundles for open-source components found in Eclipse's Neon repository
+5. Downloads source bundles for open-source components found in Eclipse's compatible repository
 6. Creates a basic site.xml file
 7. Generates artifacts.jar and content.jar files
 
@@ -55,14 +55,32 @@ Add the OpenNTF Maven server to your ~/.m2/settings.xml file. For example:
 Execute the plugin with properties to point to the base of your Domino installation and the target folder. For example:
 
 ```sh
-$ mvn org.openntf.p2:generate-domino-update-site:5.0.0:generateUpdateSite \
+$ mvn org.openntf.p2:generate-domino-update-site:6.0.0:generateUpdateSite \
     -Dsrc="/Volumes/C/Program Files/IBM/Domino" \
     -Ddest="/Users/someuser/Desktop/UpdateSite" \
-	-DflattenEmbeds=false # optional
+    -DflattenEmbeds=false # optional
+    -DonlyDots=true # optional
 ```
 - `src` is the location of Domino. On Windows, this might be "C:\Program Files\IBM\Domino". If unspecified, the Mojo will attempt to find a Domino or Notes installation based on common locations
 - `dest` is where you want to save it to. For the Extension Library, this was historically "C:\UpdateSite", but it can be anywhere
 - `flattenEmbeds` will look for embedded JARs named with Bundle-ClassPath and expand their contents out into the main bundle
+- `onlyDots` will generate an update site for DOTS plugins.
+
+Alternatively, Docker container/image can be used to generate update site.
+
+```sh
+$ mvn org.openntf.p2:generate-domino-update-site:6.0.0:generateUpdateSite \
+    -DsrcContainer="domino-container" # Either srcContainer or srcImageId should be used
+    -DsrcImageId="Domino:latest"
+    -DdockerDominoDir="/opt/hcl/domino/notes/latest/linux"
+    -Ddest="/Users/someuser/Desktop/UpdateSite" \
+    -DflattenEmbeds=false # optional
+    -DonlyDots=true # optional
+```
+
+- `srcContainer` is the container to be used as the source. Will be ignored if an image id provided.
+- `srcImageId` is the image id to be used as the source. When given, mojo will create a temporary container with the image and remove when it's done.
+- `dockerDominoDir` is the directory to the domino installation inside the container. Default value (`/opt/hcl/domino/notes/latest/linux`) will be used if omitted. Mojo will pull necessary files to a temporary directory.
 
 Note: the `flattenEmbeds` option strips signature files and makes no attempt to merge conflicts between same-named files. Accordingly, the result bundles may not behave the same way as their original versions.
 
