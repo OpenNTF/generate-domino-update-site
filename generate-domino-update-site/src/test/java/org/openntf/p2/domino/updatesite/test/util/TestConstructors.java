@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.ref.WeakReference;
 
+import org.apache.commons.lang3.SystemUtils;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.openntf.p2.domino.updatesite.test.util.data.ExampleCtorEmbed.ExampleEmbed2;
@@ -112,15 +113,25 @@ public class TestConstructors {
 	
 	@Test
 	public void testExampleThreadGroup() {
+		String expected;
+		if(SystemUtils.IS_JAVA_1_8) {
+			expected = "\tpublic ExampleThreadGroup(java.lang.String arg0) {\n\t\tsuper((java.lang.ThreadGroup)null, (java.lang.String)null);\n\t}\n\n";
+		} else {
+			expected = "\tpublic ExampleThreadGroup(java.lang.String arg0) {\n\t\tsuper((java.lang.String)null);\n\t}\n\n";
+		}
 		String actual = ClassWriterUtil.printConstructors(ExampleThreadGroup.class, ExampleThreadGroup.class.getClassLoader(), "ExampleThreadGroup", null);
-		String expected = "\tpublic ExampleThreadGroup(java.lang.String arg0) {\n\t\tsuper((java.lang.ThreadGroup)null, (java.lang.String)null);\n\t}\n\n";
 		assertEquals(expected, actual);
 	}
 	
 	@Test
 	public void testExampleThreadGroup2() {
+		String expected;
+		if(SystemUtils.IS_JAVA_1_8) {
+			expected = "\tpublic ExampleThreadGroup2(java.lang.String arg1) {\n\t\tsuper((java.lang.ThreadGroup)null, (java.lang.String)null);\n\t}\n\n";
+		} else {
+			expected = "\tpublic ExampleThreadGroup2(java.lang.String arg1) {\n\t\tsuper((java.lang.String)null);\n\t}\n\n";
+		}
 		String actual = ClassWriterUtil.printConstructors(ExampleThreadGroup2.class, ExampleThreadGroup2.class.getClassLoader(), "ExampleThreadGroup2", null);
-		String expected = "\tpublic ExampleThreadGroup2(java.lang.String arg1) {\n\t\tsuper((java.lang.ThreadGroup)null, (java.lang.String)null);\n\t}\n\n";
 		assertEquals(expected, actual);
 	}
 	
