@@ -28,7 +28,6 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -49,51 +48,74 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import com.ibm.commons.util.PathUtil;
-import com.ibm.commons.util.StringUtil;
-
+import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.DefaultArtifact;
+import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.codehaus.plexus.component.repository.ComponentDependency;
 import org.openntf.nsfodp.commons.NSFODPUtil;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
 import org.openntf.p2.domino.updatesite.util.ClassWriterConfig;
 import org.openntf.p2.domino.updatesite.util.ClassWriterUtil;
 import org.openntf.p2.domino.updatesite.util.EclipseUtil;
-import org.openntf.p2.domino.updatesite.util.MethodMatcher;
 import org.w3c.dom.Document;
+
+import com.ibm.commons.util.StringUtil;
 
 @Mojo(name = "generateSourceProjects", requiresProject = false)
 public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo {
 	private static final String[] COPY_HEADERS = {
-		"Manifest-Version", //$NON-NLS-1$
-		"Bundle-SymbolicName", //$NON-NLS-1$
-		"Bundle-Name", //$NON-NLS-1$
-		"Bundle-Version", //$NON-NLS-1$
-		"Bundle-ManifestVersion", //$NON-NLS-1$
-		"Bundle-Vendor", //$NON-NLS-1$
-		"Import-Package", //$NON-NLS-1$
-		"Require-Bundle", //$NON-NLS-1$
-		"DynamicImport-Package", //$NON-NLS-1$
-		"Export-Package", //$NON-NLS-1$
-		"Bundle-RequiredExecutionEnvironment", //$NON-NLS-1$
-		"Fragment-Host", //$NON-NLS-1$
-		"Eclipse-ExtensibleAPI", //$NON-NLS-1$
-		"Eclipse-SourceReferences" //$NON-NLS-1$
+			"Manifest-Version", //$NON-NLS-1$
+			"Bundle-SymbolicName", //$NON-NLS-1$
+			"Bundle-Name", //$NON-NLS-1$
+			"Bundle-Version", //$NON-NLS-1$
+			"Bundle-ManifestVersion", //$NON-NLS-1$
+			"Bundle-Vendor", //$NON-NLS-1$
+			"Import-Package", //$NON-NLS-1$
+			"Require-Bundle", //$NON-NLS-1$
+			"DynamicImport-Package", //$NON-NLS-1$
+			"Export-Package", //$NON-NLS-1$
+			"Bundle-RequiredExecutionEnvironment", //$NON-NLS-1$
+			"Fragment-Host", //$NON-NLS-1$
+			"Eclipse-ExtensibleAPI", //$NON-NLS-1$
+			"Eclipse-SourceReferences" //$NON-NLS-1$
+	};
+	
+	private static final String[] DEFAULT_CLASSPATH = {
+
+		// Provide CORBA and JEE dependencies for Java > 9
+		// This is declared in the project dependencies, so will have been downloaded
+		"glassfish-corba-omgapi", //$NON-NLS-1$
+		"jakarta.jms-api", //$NON-NLS-1$
+		"jakarta.transaction-api", //$NON-NLS-1$
+		"xmlpull", //$NON-NLS-1$
+
+		// RuntimeDelegate tries to initialize and needs to see an implementation
+		"jersey-bundle", //$NON-NLS-1$
+		
+		// Observed needing a missing interface
+		"lucene-grouping", //$NON-NLS-1$
+		"lucene-spatial-extras", //$NON-NLS-1$
+		
+		// Some components reference Log4J in their API
+		"log4j-core" //$NON-NLS-1$
 	};
 
 	/**
@@ -101,6 +123,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 	 */
 	@org.apache.maven.plugins.annotations.Parameter(property = "dest", required = true)
 	private File dest;
+
+	@Parameter(defaultValue = "${plugin}", readonly = true)
+	protected PluginDescriptor pluginDescriptor;
 
 	private URLClassLoader cl;
 
@@ -124,17 +149,23 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			Path tempPom) throws MojoExecutionException {
 
 		getLog().info(MessageFormat.format("Processing bundle {0}", bundle.getArtifactId()));
-		
-		// Special-case ICU base, as it's impossibly old, troublesome, and a subset of real ICU, which is also included
-		if("com.ibm.icu.base".equals(bundle.getArtifactId())) { //$NON-NLS-1$
-			if(getLog().isDebugEnabled()) {
+
+		// Special-case ICU base, as it's impossibly old, troublesome, and a subset of
+		// real ICU, which is also included
+		if ("com.ibm.icu.base".equals(bundle.getArtifactId())) { //$NON-NLS-1$
+			if (getLog().isDebugEnabled()) {
 				getLog().debug("- Skipping com.ibm.icu.base");
 			}
 			return;
-		} else if(bundle.getArtifactId().endsWith(".source")) { //$NON-NLS-1$
+		} else if (bundle.getArtifactId().endsWith(".source")) { //$NON-NLS-1$
 			// TODO prefer using this local bundle when available
-			if(getLog().isDebugEnabled()) {
+			if (getLog().isDebugEnabled()) {
 				getLog().debug(MessageFormat.format("- Skipping existing source bundle {0}", bundle.getArtifactId()));
+			}
+			return;
+		} else if(!shouldCopyBundle(bundle.getArtifactId())) {
+			if(getLog().isInfoEnabled()) {
+				getLog().info("- Skipping non-proprietary or non-useful bundle");
 			}
 			return;
 		}
@@ -153,23 +184,24 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			throw new MojoExecutionException(MessageFormat.format("Unable to create bundle directory: {0}", plugins),
 					e);
 		}
-		
+
 		Path src = bundleBase.resolve("src"); //$NON-NLS-1$
-		
+
 		try {
 			Files.createDirectories(src);
-			
+
 			String eclipseUpdateSite = EclipseUtil.chooseEclipseUpdateSite(Collections.singleton(this.src.toPath()));
 			Document eclipseArtifacts = EclipseUtil.fetchEclipseArtifacts(getLog(), eclipseUpdateSite);
 
 			Path origJarPath = Paths.get(bundle.getFilePath());
-			
+
 			Path sourceTemp = Files.createTempDirectory("bundlesource"); //$NON-NLS-1$
 			try {
 				// See if we can find the source for it
 				String bundleName = bundle.getArtifactId() + '_' + bundle.getVersion() + ".jar"; //$NON-NLS-1$
-				Path sourceJar = EclipseUtil.downloadSource(getLog(), Paths.get(bundleName), sourceTemp, eclipseArtifacts, eclipseUpdateSite);
-				if(!ClassWriterConfig.SKIP_SOURCE_BUNDLES.contains(bundle.getArtifactId()) && sourceJar != null) {
+				Path sourceJar = EclipseUtil.downloadSource(getLog(), Paths.get(bundleName), sourceTemp,
+						eclipseArtifacts, eclipseUpdateSite);
+				if (!ClassWriterConfig.SKIP_SOURCE_BUNDLES.contains(bundle.getArtifactId()) && sourceJar != null) {
 					// If so, build a new source project for it
 					copySourceBundle(src, sourceJar, origJarPath);
 					createBuildStubs(bundleBase);
@@ -187,7 +219,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			} finally {
 				NSFODPUtil.deltree(sourceTemp);
 			}
-		} catch(IOException e) {
+		} catch (IOException e) {
 			throw new MojoExecutionException("Encountered generation exception", e);
 		}
 	}
@@ -215,25 +247,26 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					targetAttributes.putValue(headerName, val);
 				}
 			}
-			
-			// Special handling for some bundles that use classes from org.eclipse.equinox.registry
-			//   but don't depend on it
+
+			// Special handling for some bundles that use classes from
+			// org.eclipse.equinox.registry
+			// but don't depend on it
 			String symbolicName = targetAttributes.getValue("Bundle-SymbolicName"); //$NON-NLS-1$
 			int semiIndex = symbolicName.indexOf(';');
-			if(semiIndex > -1) {
+			if (semiIndex > -1) {
 				symbolicName = symbolicName.substring(0, semiIndex);
 			}
-			
+
 			// Remove any packages we were told to ignore
 			String exportedPackages = targetAttributes.getValue("Export-Package"); //$NON-NLS-1$
-			if(StringUtil.isNotEmpty(exportedPackages)) {
+			if (StringUtil.isNotEmpty(exportedPackages)) {
 				String[] packages = StringUtil.splitString(exportedPackages, ',');
 				exportedPackages = Arrays.stream(packages)
-					.filter(p -> !ClassWriterConfig.SKIP_PACKAGES.contains(p))
-					.collect(Collectors.joining(",")); //$NON-NLS-1$
+						.filter(p -> !ClassWriterConfig.SKIP_PACKAGES.contains(p))
+						.collect(Collectors.joining(",")); //$NON-NLS-1$
 				targetAttributes.putValue("Export-Package", exportedPackages); //$NON-NLS-1$
 			}
-			
+
 			// Set the Bundle-Name to the symbolic name for ease of programmatic use
 			targetAttributes.putValue("Bundle-Name", symbolicName); //$NON-NLS-1$
 
@@ -249,65 +282,71 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					MessageFormat.format("Encountered exception copying manifest to {0}", bundleBase), e);
 		}
 	}
-	
+
 	private void copySourceBundle(Path src, Path sourceJar, Path origJarPath) throws IOException {
-		try(FileSystem zipFs = NSFODPUtil.openZipPath(sourceJar)) {
+		try (FileSystem zipFs = NSFODPUtil.openZipPath(sourceJar)) {
 			Path rootSource = zipFs.getPath("/"); //$NON-NLS-1$
-			
+
 			// Copy META-INF and OSGI-INF wholesale to the parent of the src destination
 			Path metaInfSource = rootSource.resolve("META-INF"); //$NON-NLS-1$
-			NSFODPUtil.copyDirectory(metaInfSource, src.getParent().resolve("META-INF")); //$NON-NLS-1$
+			if(Files.isDirectory(metaInfSource)) {
+				NSFODPUtil.copyDirectory(metaInfSource, src.getParent().resolve("META-INF")); //$NON-NLS-1$
+			}
 			Path osgiInfSource = rootSource.resolve("OSGI-INF"); //$NON-NLS-1$
-			NSFODPUtil.copyDirectory(osgiInfSource, src.getParent().resolve("OSGI-INF")); //$NON-NLS-1$
-			
+			if(Files.isDirectory(osgiInfSource)) {
+				NSFODPUtil.copyDirectory(osgiInfSource, src.getParent().resolve("OSGI-INF")); //$NON-NLS-1$
+			}
+
 			// Copy everything, resources included, into the src dir
 			Files.list(rootSource)
-				.filter(p -> !"META-INF".equals(p.getFileName().toString()) && !"OSGI-INF".equals(p.getFileName().toString())) //$NON-NLS-1$ //$NON-NLS-2$
-				.forEach(p -> {
-					try {
-						if(Files.isDirectory(p)) {
-							NSFODPUtil.copyDirectory(p, src.resolve(p.getFileName().toString()));
-						} else {
-							Files.copy(p, src.resolve(p.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
+					.filter(p -> !"META-INF".equals(p.getFileName().toString()) //$NON-NLS-1$
+							&& !"OSGI-INF".equals(p.getFileName().toString())) //$NON-NLS-1$
+					.forEach(p -> {
+						try {
+							if (Files.isDirectory(p)) {
+								NSFODPUtil.copyDirectory(p, src.resolve(p.getFileName().toString()));
+							} else {
+								Files.copy(p, src.resolve(p.getFileName().toString()),
+										StandardCopyOption.REPLACE_EXISTING);
+							}
+						} catch (IOException e) {
+							throw new UncheckedIOException(e);
 						}
-					} catch(IOException e) {
-						throw new UncheckedIOException(e);
-					}
-				});
-			
+					});
+
 			// Post-process MANIFEST.MF to remove source info
 			Path manifestPath = src.getParent().resolve("META-INF").resolve("MANIFEST.MF"); //$NON-NLS-1$ //$NON-NLS-2$
 			Manifest manifest;
-			try(InputStream is = Files.newInputStream(manifestPath)) {
+			try (InputStream is = Files.newInputStream(manifestPath)) {
 				manifest = new Manifest(is);
 			}
 			Attributes attrs = manifest.getMainAttributes();
 			String symbolicName = attrs.getValue("Bundle-SymbolicName"); //$NON-NLS-1$
-			if(symbolicName.endsWith(".source")) { //$NON-NLS-1$
-				symbolicName = symbolicName.substring(0, symbolicName.length()-".source".length()); //$NON-NLS-1$
+			if (symbolicName.endsWith(".source")) { //$NON-NLS-1$
+				symbolicName = symbolicName.substring(0, symbolicName.length() - ".source".length()); //$NON-NLS-1$
 				attrs.putValue("Bundle-SymbolicName", symbolicName); //$NON-NLS-1$
 			}
 			attrs.remove(new Attributes.Name("Eclipse-SourceBundle")); //$NON-NLS-1$
-			
+
 			// Add entries for Export-Package et al, since source bundles don't have those
-			try(JarFile origJar = new JarFile(origJarPath.toFile())) {
+			try (JarFile origJar = new JarFile(origJarPath.toFile())) {
 				Manifest origJarManifest = origJar.getManifest();
 				Attributes origAttrs = origJarManifest.getMainAttributes();
-				for(String header : COPY_HEADERS) {
-					if(origAttrs.containsKey(new Attributes.Name(header))) {
+				for (String header : COPY_HEADERS) {
+					if (origAttrs.containsKey(new Attributes.Name(header))) {
 						attrs.putValue(header, origAttrs.getValue(header));
 					}
 				}
 			}
-			
+
 			// Look for known-bad classes
-			for(String className : ClassWriterConfig.SKIP_SOURCE_CLASSES) {
+			for (String className : ClassWriterConfig.SKIP_SOURCE_CLASSES) {
 				String classPath = className.replace(".", src.getFileSystem().getSeparator()); //$NON-NLS-1$
 				Path classFile = src.resolve(classPath + ".java"); //$NON-NLS-1$
 				Files.deleteIfExists(classFile);
 			}
-			
-			try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.TRUNCATE_EXISTING)) {
+
+			try (OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.TRUNCATE_EXISTING)) {
 				manifest.write(os);
 			}
 		}
@@ -382,22 +421,27 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			if (true || exportedPackages.contains(packageName)) {
 				String className = entryName.substring(slashIndex + 1, entryName.length() - ".class".length()); //$NON-NLS-1$
 				className = packageName + "." + className; //$NON-NLS-1$
-				try {
-					Class<?> clazz = this.cl.loadClass(className);
+				if (shouldEmitClassName(className)) {
+					try {
+						Class<?> clazz = Class.forName(className, false, this.cl);
 
-					if (shouldEmitClass(clazz)) {
-						String ownerClass = clazz.getName();
-						int dollarIndex = ownerClass.indexOf('$');
-						if(dollarIndex > -1) {
-							ownerClass = ownerClass.substring(0, dollarIndex);
+						if (shouldEmitClass(clazz)) {
+							String ownerClass = clazz.getName();
+							int dollarIndex = ownerClass.indexOf('$');
+							if (dollarIndex > -1) {
+								ownerClass = ownerClass.substring(0, dollarIndex);
+							}
+
+							SortedSet<Class<?>> pool = classes.computeIfAbsent(ownerClass,
+									key -> new TreeSet<>(Comparator.comparing(Class::getName)));
+							pool.add(clazz);
 						}
-						
-						SortedSet<Class<?>> pool = classes.computeIfAbsent(ownerClass,
-								key -> new TreeSet<>(Comparator.comparing(Class::getName)));
-						pool.add(clazz);
+					} catch (NoClassDefFoundError | ClassNotFoundException e) {
+						getLog().warn(MessageFormat.format("Encountered exception processing class {0}", className), e);
+					} catch (IncompatibleClassChangeError e) {
+						// Shows up for some ICU classes that inherit final classes
+						getLog().warn(MessageFormat.format("Unable to load class {0}: {1}", className, e.toString()));
 					}
-				} catch (NoClassDefFoundError | ClassNotFoundException e) {
-					getLog().warn(MessageFormat.format("Encountered exception processing class {0}", className), e);
 				}
 			}
 		}
@@ -442,13 +486,16 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 						StringWriter sw = new StringWriter();
 						PrintWriter pw = new PrintWriter(sw)) {
 					writeClass(pw, pool, className);
-					
+
 					pw.flush();
 					w.append(sw.toString());
 				}
 			}
-		} catch(NoClassDefFoundError e) {
+		} catch (NoClassDefFoundError e) {
 			// Shows up for some client-only classes in Domino update sites
+			getLog().warn(MessageFormat.format("Unable to write class {0}: {1}", className, e.toString()));
+		} catch(IncompatibleClassChangeError e) {
+			// Shows up for some ICU classes with broken lineages
 			getLog().warn(MessageFormat.format("Unable to write class {0}: {1}", className, e.toString()));
 		} catch (IOException e) {
 			throw new MojoExecutionException(MessageFormat
@@ -464,7 +511,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		// TODO annotations? They're likely not required for compilation
 
 		// Skip emitting the package name if it's an inner class
-		if(clazz.getName().indexOf('$') == -1) {
+		if (clazz.getName().indexOf('$') == -1) {
 			pw.println("package " + clazz.getPackage().getName() + ";"); //$NON-NLS-1$ //$NON-NLS-2$
 			pw.println();
 		}
@@ -474,7 +521,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		pw.println(" {"); //$NON-NLS-1$
 
 		// Visible properties
-		
+
 		// Run through enum properties first
 		if (clazz.isEnum()) {
 			for (Field f : clazz.getDeclaredFields()) {
@@ -486,7 +533,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			}
 			pw.println(';');
 		}
-		
+
 		// Now normal properties
 		pw.print(ClassWriterUtil.printClassFields(clazz, getLog()));
 
@@ -512,9 +559,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 
 		// Write out any inner classes
-		if(!ClassWriterConfig.SKIP_INNER_CLASSES.contains(clazz.getName())) {
+		if (!ClassWriterConfig.SKIP_INNER_CLASSES.contains(clazz.getName())) {
 			for (Class<?> innerClass : innerClasses) {
-				if(!shouldEmitClass(innerClass)) {
+				if (!shouldEmitClass(innerClass)) {
 					continue;
 				}
 				// Process only direct inner classes, i.e. those where the last $ is just past
@@ -524,8 +571,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					// While here, collect any deeper inner classes
 					SortedSet<Class<?>> deeperClasses = pool.stream().skip(1)
 							.filter(c -> c.getName().startsWith(innerClass.getName()))
-							.collect(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(Class::getName))));
-	
+							.collect(
+									Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(Class::getName))));
+
 					String innerClassName = innerClass.getName().substring(dollarIndex + 1);
 					if (Character.isDigit(innerClassName.charAt(0))) {
 						int dotIndex = innerClass.getName().lastIndexOf('.');
@@ -535,10 +583,10 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				}
 			}
 		}
-		
+
 		// Add any explicit text to add
 		String extraSource = ClassWriterConfig.RAW_CLASS_BODY_ADDITIONS.get(clazz.getName());
-		if(StringUtil.isNotEmpty(extraSource)) {
+		if (StringUtil.isNotEmpty(extraSource)) {
 			pw.println(extraSource);
 		}
 
@@ -551,23 +599,24 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		Properties props = new Properties();
 		props.put("source..", "src"); //$NON-NLS-1$ //$NON-NLS-2$
 		props.put("output..", "target/classes"); //$NON-NLS-1$ //$NON-NLS-2$
-		
-		if(Files.isDirectory(bundleBase.resolve("OSGI-INF"))) { //$NON-NLS-1$
+
+		if (Files.isDirectory(bundleBase.resolve("OSGI-INF"))) { //$NON-NLS-1$
 			props.put("bin.includes", "META-INF/,OSGI-INF/,."); //$NON-NLS-1$ //$NON-NLS-2$
 		} else {
 			props.put("bin.includes", "META-INF/,."); //$NON-NLS-1$ //$NON-NLS-2$
 		}
-		
+
 		props.put("tycho.pomless.parent", "../../pom.xml"); //$NON-NLS-1$ //$NON-NLS-2$
 		// Used by several Equinox bundles implicitly
-		props.put("jars.extra.classpath", "platform:/plugin/org.osgi.annotation.versioning,platform:/plugin/org.openntf.domino.java.api.corba.patch"); //$NON-NLS-1$ //$NON-NLS-2$
-		
+		props.put("jars.extra.classpath", //$NON-NLS-1$
+				"platform:/plugin/org.osgi.annotation.versioning,platform:/plugin/org.openntf.domino.java.api.corba.patch"); //$NON-NLS-1$
+
 		String bundleName = bundleBase.getFileName().toString();
 		Collection<String> extraDeps = ClassWriterConfig.ADD_ADDITIONAL_BUNDLES.get(bundleName);
-		if(extraDeps != null) {
+		if (extraDeps != null) {
 			props.put("additional.bundles", String.join(",", extraDeps)); //$NON-NLS-1$ //$NON-NLS-2$
 		}
-		
+
 		try (OutputStream os = Files.newOutputStream(buildProperties, StandardOpenOption.CREATE,
 				StandardOpenOption.TRUNCATE_EXISTING)) {
 			props.store(os, null);
@@ -598,20 +647,21 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 		try {
 			Collection<URL> urls = new ArrayList<>();
-
-			// Provide CORBA and JEE dependencies for Java > 9
-			// This is declared in the project dependencies, so will have been downloaded
-			urls.add(findLocalMavenArtifact("org.glassfish.corba", "glassfish-corba-omgapi", "4.2.5", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-			urls.add(findLocalMavenArtifact("jakarta.jms", "jakarta.jms-api", "2.0.2", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-			urls.add(findLocalMavenArtifact("jakarta.transaction", "jakarta.transaction-api", "1.3.3", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-			urls.add(findLocalMavenArtifact("xmlpull", "xmlpull", "1.1.3.4d_b4_min", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 			
-			// RuntimeDelegate tries to initialize and needs to see an implementation
-			urls.add(findLocalMavenArtifact("com.sun.jersey", "jersey-bundle", "1.19.4", "jar").toUri().toURL()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-			
-			// TODO include old Servlet as in ndext (and Log4j)?
+			Arrays.stream(DEFAULT_CLASSPATH)
+				.map(this::getDependencyJar)
+				.map(Path::toUri)
+				.map(t -> {
+					try {
+						return t.toURL();
+					} catch (MalformedURLException e) {
+						throw new UncheckedIOException(e);
+					}
+				})
+				.forEach(urls::add);
 
-			Files.list(bundlesDir).filter(p -> p.getFileName().toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
+			try (Stream<Path> bundleStream = Files.list(bundlesDir)) {
+				bundleStream.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".jar")) //$NON-NLS-1$
 					.map(p -> {
 						try {
 							return p.toUri().toURL();
@@ -619,32 +669,17 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 							throw new UncheckedIOException(e);
 						}
 					}).forEach(urls::add);
+			}
 			return new URLClassLoader(urls.toArray(new URL[urls.size()]), ClassLoader.getSystemClassLoader());
 		} catch (IOException | UncheckedIOException e) {
 			throw new MojoExecutionException("Encountered exception building workspace ClassLoader", e);
 		}
 	}
 
-	private static Path findLocalMavenArtifact(String groupId, String artifactId, String version, String type) {
-		String mavenRepo = System.getProperty("maven.repo.local"); //$NON-NLS-1$
-		if (StringUtil.isEmpty(mavenRepo)) {
-			mavenRepo = PathUtil.concat(System.getProperty("user.home"), ".m2", File.separatorChar); //$NON-NLS-1$ //$NON-NLS-2$
-			mavenRepo = PathUtil.concat(mavenRepo, "repository", File.separatorChar); //$NON-NLS-1$
-		}
-		String groupPath = groupId.replace('.', File.separatorChar);
-		Path localPath = Paths.get(mavenRepo).resolve(groupPath).resolve(artifactId).resolve(version);
-		String fileName = StringUtil.format("{0}-{1}.{2}", artifactId, version, type); //$NON-NLS-1$
-		Path localFile = localPath.resolve(fileName);
-
-		if (!Files.isRegularFile(localFile)) {
-			throw new RuntimeException("Unable to locate Maven artifact: " + localFile);
-		}
-
-		return localFile;
-	}
-
 	private boolean needsConstructor(Class<?> clazz) {
-		if(true) { return false; }
+		if (true) {
+			return false;
+		}
 		if (clazz.isInterface() || clazz.isEnum()) {
 			return false;
 		}
@@ -653,82 +688,96 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		}
 		return false;
 	}
-	
+
+	private boolean shouldEmitClassName(String className) {
+		// Ignore META-INF/versions, etc. for our needs
+		if (className.startsWith("META-INF.")) { //$NON-NLS-1$
+			return false;
+		}
+		// Ignore module-info
+		if (className.endsWith(".module-info")) { //$NON-NLS-1$
+			return false;
+		}
+		return true;
+	}
+
 	private boolean shouldEmitClass(Class<?> clazz) {
 		int dollarIndex = clazz.getName().indexOf('$');
-		if(Modifier.isPrivate(clazz.getModifiers()) && dollarIndex == -1) {
+		if (Modifier.isPrivate(clazz.getModifiers()) && dollarIndex == -1) {
 			// Equinox has some cases of public methods referencing private internal types
 			return false;
 		}
-		if(clazz.isAnonymousClass()) {
+		if (clazz.isAnonymousClass()) {
 			return false;
 		}
-		if(ClassWriterConfig.SKIP_CLASSES.contains(clazz.getName())) {
+		if (ClassWriterConfig.SKIP_CLASSES.contains(clazz.getName())) {
 			return false;
 		}
-		// "Anonymous" seems to not be enough of what I mean - look for number-only classes like "JspClassLoader$1"
-		if(dollarIndex > -1) {
-			String postName = clazz.getName().substring(dollarIndex+1);
+		// "Anonymous" seems to not be enough of what I mean - look for number-only
+		// classes like "JspClassLoader$1"
+		if (dollarIndex > -1) {
+			String postName = clazz.getName().substring(dollarIndex + 1);
 			try {
 				Integer.parseInt(postName);
 				return false;
-			} catch(NumberFormatException e) {
+			} catch (NumberFormatException e) {
 				// Not numeric only
 			}
 		}
-		
-		if(clazz.isSynthetic()) {
+
+		if (clazz.isSynthetic()) {
 			return false;
 		}
 		try {
-			if(clazz.getDeclaringClass() != null && clazz.getDeclaringClass().isAnonymousClass()) {
+			if (clazz.getDeclaringClass() != null && clazz.getDeclaringClass().isAnonymousClass()) {
 				// Used in e.g. org.apache.felix.resolver.ResolverImpl -> anon -> Computer
 				return false;
 			}
-		} catch(IllegalAccessError e) {
+		} catch (IllegalAccessError e) {
 			// Assume it's deep enough that we don't want it
 			return false;
-		} catch(IncompatibleClassChangeError e) {
+		} catch (IncompatibleClassChangeError e) {
 			// Seen in exactly these kinds of cases - we don't want it
 			return false;
 		}
-		
+
 		// Implementation-specific classes geared towards OpenJ9
-		if(clazz.getName().startsWith("org.eclipse.osgi.internal.cds.")) { //$NON-NLS-1$
+		if (clazz.getName().startsWith("org.eclipse.osgi.internal.cds.")) { //$NON-NLS-1$
 			return false;
 		}
-		
-		if(clazz.getPackage() != null && ClassWriterConfig.SKIP_PACKAGES.contains(clazz.getPackage().getName())) {
+
+		if (clazz.getPackage() != null && ClassWriterConfig.SKIP_PACKAGES.contains(clazz.getPackage().getName())) {
 			return false;
 		}
-		
-		// Domino re-packages the core XML APIs, but they are standard in all supported Java versions
-		//   and trying to re-make them is trouble on Java > 8
+
+		// Domino re-packages the core XML APIs, but they are standard in all supported
+		// Java versions
+		// and trying to re-make them is trouble on Java > 8
 		String className = clazz.getName();
-		if(className.startsWith("javax.xml.stream.")) { //$NON-NLS-1$
+		if (className.startsWith("javax.xml.stream.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.stream.events.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.stream.events.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.datatype.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.datatype.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.validation.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.validation.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.xpath.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.xpath.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.transform.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.transform.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.parsers.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.parsers.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.crypto.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.crypto.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("javax.xml.catalog.")) { //$NON-NLS-1$
+		} else if (className.startsWith("javax.xml.catalog.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("org.xml.")) { //$NON-NLS-1$
+		} else if (className.startsWith("org.xml.")) { //$NON-NLS-1$
 			return false;
-		} else if(className.startsWith("org.w3c.")) { //$NON-NLS-1$
+		} else if (className.startsWith("org.w3c.")) { //$NON-NLS-1$
 			return false;
 		}
-		
+
 		return true;
 	}
 
@@ -763,5 +812,55 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 //			return true;
 //		}
 		return true;
+	}
+
+	private Path getDependencyJar(String artifactId) {
+		List<ComponentDependency> dependencies = pluginDescriptor.getDependencies();
+		ComponentDependency dep = dependencies.stream()
+				.filter(a -> artifactId.equals(a.getArtifactId()))
+				.findFirst()
+				.orElseThrow(() -> new IllegalStateException(
+						MessageFormat.format("Could not find dependency: {0}", artifactId))); //$NON-NLS-1$
+
+		// flatten-maven-plugin causes trouble with Tycho .qualifier, so alter the
+		// version if necessary
+		String version = dep.getVersion();
+		if (version.endsWith(".qualifier")) { //$NON-NLS-1$
+			version = version.substring(0, version.length() - ".qualifier".length()) + "-SNAPSHOT"; //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		Artifact art = new DefaultArtifact(dep.getGroupId(), dep.getArtifactId(), version, "", dep.getType(), "", //$NON-NLS-1$ //$NON-NLS-2$
+				new DefaultArtifactHandler());
+		art = mavenSession.getLocalRepository().find(art);
+		File file = art.getFile();
+		Path result;
+		if (file.toString().endsWith(".jar")) { //$NON-NLS-1$
+			result = file.toPath();
+			if (!Files.exists(result)) {
+				throw new IllegalStateException(MessageFormat.format("Dependency JAR does not exist: {0}", result)); //$NON-NLS-1$
+			}
+		} else {
+			result = Paths.get(file.toString() + ".jar"); //$NON-NLS-1$
+		}
+		if (!Files.exists(result)) {
+			throw new IllegalStateException(MessageFormat.format("Dependency JAR does not exist: {0}", result)); //$NON-NLS-1$
+		}
+		return result;
+	}
+	
+	private boolean shouldCopyBundle(String symbolicName) {
+		if(symbolicName.startsWith("com.ibm")) { //$NON-NLS-1$
+			if(symbolicName.startsWith("com.ibm.icu")) { //$NON-NLS-1$
+				return false;
+			} else if(symbolicName.startsWith("com.ibm.verse")) { //$NON-NLS-1$
+				return false;
+			} else {
+				return true;
+			}
+		} else if(symbolicName.startsWith("com.hcl")) { //$NON-NLS-1$
+			return true;
+		} else {
+			return false;
+		}
 	}
 }

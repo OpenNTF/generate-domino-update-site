@@ -196,14 +196,14 @@ public class GenerateUpdateSiteTask implements Runnable {
 				Path coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.24.0.v20210910-0750.jar"); //$NON-NLS-1$
 				if(Files.isRegularFile(coreRuntime)) {
 					if(log.isInfoEnabled()) {
-						log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.0")); //$NON-NLS-1$
+						log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.0")); //$NON-NLS-1$ //$NON-NLS-2$
 					}
 					this.eclipseUpdateSite = UPDATE_SITE_202112;
 				} else {
 					coreRuntime = plugins.resolve("org.eclipse.core.runtime_3.30.0.v20231102-0719.jar"); //$NON-NLS-1$
 					if(Files.isRegularFile(coreRuntime)) {
 						if(log.isInfoEnabled()) {
-							log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.5")); //$NON-NLS-1$
+							log.info(Messages.getString("GenerateUpdateSiteTask.dominoVersionFound", "14.5")); //$NON-NLS-1$ //$NON-NLS-2$
 						}
 						this.eclipseUpdateSite = UPDATE_SITE_202312;
 					}

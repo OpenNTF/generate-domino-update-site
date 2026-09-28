@@ -13,7 +13,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<tycho-version>2.7.5</tycho-version>
+		<tycho-version>5.0.2</tycho-version>
 		<maven.compiler.source>17</maven.compiler.source>
 		<maven.compiler.target>17</maven.compiler.target>
 	</properties>
@@ -95,35 +95,6 @@
 							</requirement>
 						</extraRequirements>
 					</dependency-resolution>
-
-					<environments>
-						<environment>
-							<os>linux</os>
-							<ws>gtk</ws>
-							<arch>x86</arch>
-						</environment>
-						<environment>
-							<os>linux</os>
-							<ws>gtk</ws>
-							<arch>x86_64</arch>
-						</environment>
-						<environment>
-							<os>win32</os>
-							<ws>win32</ws>
-							<arch>x86</arch>
-						</environment>
-						<environment>
-							<os>win32</os>
-							<ws>win32</ws>
-							<arch>x86_64</arch>
-						</environment>
-						<environment>
-							<os>macosx</os>
-							<ws>cocoa</ws>
-							<arch>x86_64</arch>
-						</environment>
-					</environments>
-					<resolver>p2</resolver>
 				</configuration>
 			</plugin>
 			
@@ -143,7 +114,7 @@
 									<version>3.0.1</version>
 								</requireMavenVersion>
 								<requireJavaVersion>
-									<version>11</version>
+									<version>17</version>
 								</requireJavaVersion>
 							</rules>
 						</configuration>
