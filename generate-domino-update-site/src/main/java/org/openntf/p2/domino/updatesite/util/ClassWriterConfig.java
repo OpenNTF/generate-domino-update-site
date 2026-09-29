@@ -59,6 +59,23 @@ public enum ClassWriterConfig {
 	 * A table of fields to skip generating
 	 */
 	public static final Map<String, Collection<String>> SKIP_FIELDS;
+	
+	/**
+	 * Some bundles refer to non-distributed dependencies, so remove
+	 * those references from Require-Bundle
+	 */
+	public static final Set<String> VETOED_REQUIREMENTS = new HashSet<>(Arrays.asList(
+		"com.ibm.pvc.servlet.jsp.jstl", //$NON-NLS-1$
+		"com.ibm.domino.xsp.bridge.websrv", //$NON-NLS-1$
+		"COM.ibm.JEmpower" //$NON-NLS-1$
+	));
+	
+	/**
+	 * Some non-bundle dependencies have different names in generated update sites
+	 * vs. the internal build environment
+	 */
+	public static final Map<String, String> TRANSLATE_BUNDLE_NAMES;
+	
 	static {
 		SKIP_SOURCE_BUNDLES = new HashSet<>();
 		// These use downstream dependencies
@@ -238,5 +255,8 @@ public enum ClassWriterConfig {
 		
 		SKIP_FIELDS = new HashMap<>();
 		SKIP_FIELDS.put("org.apache.xalan.xsltc.compiler.XPathParser", Collections.singleton("action_obj")); //$NON-NLS-1$ //$NON-NLS-2$
+		
+		TRANSLATE_BUNDLE_NAMES = new HashMap<>();
+		TRANSLATE_BUNDLE_NAMES.put("com.ibm.domino.http.bootstrap", "com.ibm.xsp.http.bootstrap"); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 }

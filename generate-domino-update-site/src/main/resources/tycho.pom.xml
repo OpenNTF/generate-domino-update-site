@@ -13,7 +13,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<tycho-version>5.0.2</tycho-version>
+		<tycho-version>5.0.4</tycho-version>
 		<maven.compiler.source>17</maven.compiler.source>
 		<maven.compiler.target>17</maven.compiler.target>
 	</properties>
@@ -24,6 +24,16 @@
 			<name>artifactory.openntf.org</name>
 			<url>https://artifactory.openntf.org/openntf</url>
 		</repository>
+        <repository>
+            <id>eclipse</id>
+            <url>https://download.eclipse.org/releases/2021-12/202112081000/</url>
+            <layout>p2</layout>
+        </repository>
+        <repository>
+            <id>orbit</id>
+            <url>https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/release/4.29.0/</url>
+            <layout>p2</layout>
+        </repository>
 	</repositories>
 	
 	<dependencies>
@@ -86,6 +96,7 @@
 				<artifactId>target-platform-configuration</artifactId>
 				<configuration>
 					<pomDependencies>consider</pomDependencies>
+                    <executionEnvironment>JavaSE-17</executionEnvironment>
 					<dependency-resolution>
 						<extraRequirements>
 							<requirement>
@@ -95,6 +106,9 @@
 							</requirement>
 						</extraRequirements>
 					</dependency-resolution>
+                    <target>
+                        <file>${project.basedir}/../../deps.target</file>
+                    </target>
 				</configuration>
 			</plugin>
 			

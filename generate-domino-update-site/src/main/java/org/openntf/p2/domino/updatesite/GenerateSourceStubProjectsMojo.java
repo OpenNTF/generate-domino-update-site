@@ -71,11 +71,13 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.codehaus.plexus.component.repository.ComponentDependency;
 import org.openntf.nsfodp.commons.NSFODPUtil;
+import org.openntf.nsfodp.commons.xml.NSFODPDomUtil;
 import org.openntf.p2.domino.updatesite.model.BundleInfo;
 import org.openntf.p2.domino.updatesite.util.ClassWriterConfig;
 import org.openntf.p2.domino.updatesite.util.ClassWriterUtil;
 import org.openntf.p2.domino.updatesite.util.EclipseUtil;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 import com.ibm.commons.util.StringUtil;
 
@@ -266,6 +268,39 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 						.collect(Collectors.joining(",")); //$NON-NLS-1$
 				targetAttributes.putValue("Export-Package", exportedPackages); //$NON-NLS-1$
 			}
+			
+			// Post-process Require-Bundle
+			boolean[] needsFragments = { false };
+			String requireBundle = targetAttributes.getValue("Require-Bundle"); //$NON-NLS-1$
+			if(StringUtil.isNotEmpty(requireBundle)) {
+				String[] bundles = StringUtil.splitString(requireBundle, ',');
+				requireBundle = Arrays.stream(bundles)
+					.filter(b -> {
+						// Some dependencies are not actualy present, so remove them
+						String bundleName = b;
+						int bSemiIndex = bundleName.indexOf(';');
+						if(bSemiIndex > -1) {
+							bundleName = bundleName.substring(0, bSemiIndex);
+						}
+						
+						// While here, see if we're going to need to add the lotus.domino
+						// or NAPI fragments
+						
+						if("com.ibm.notes.java.api".equals(bundleName) || "com.ibm.domino.napi".equals(bundleName)) { //$NON-NLS-1$ //$NON-NLS-2$
+							needsFragments[0] = true;
+						}
+						
+						return !ClassWriterConfig.VETOED_REQUIREMENTS.contains(bundleName);
+					})
+					.map(b -> {
+						// Handle cases of internal bundle names being different from
+						// generated ones
+						String translated = ClassWriterConfig.TRANSLATE_BUNDLE_NAMES.get(b);
+						return translated == null ? b : translated;
+					})
+					.collect(Collectors.joining(",")); //$NON-NLS-1$
+				targetAttributes.putValue("Require-Bundle", requireBundle); //$NON-NLS-1$
+			}
 
 			// Set the Bundle-Name to the symbolic name for ease of programmatic use
 			targetAttributes.putValue("Bundle-Name", symbolicName); //$NON-NLS-1$
@@ -276,6 +311,21 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			try (OutputStream os = Files.newOutputStream(manifest, StandardOpenOption.CREATE,
 					StandardOpenOption.TRUNCATE_EXISTING)) {
 				targetManifest.write(os);
+			}
+			
+			// If the bundle needs a special pom.xml, write that now
+			if(needsFragments[0]) {
+				Document pomXmlDoc;
+				try(InputStream is = getClass().getResourceAsStream("/fragmentDepPom.xml")) { //$NON-NLS-1$
+					pomXmlDoc = NSFODPDomUtil.createDocument(is);
+				}
+				Element artifactId = (Element)NSFODPDomUtil.node(pomXmlDoc, "/*[name()='project']/*[name()='artifactId']").orElse(null); //$NON-NLS-1$
+				artifactId.setTextContent(symbolicName);
+				
+				Path pomXml = bundleBase.resolve("pom.xml"); //$NON-NLS-1$
+				try(BufferedWriter w = Files.newBufferedWriter(pomXml, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
+					NSFODPDomUtil.serialize(w, pomXmlDoc, null);
+				}
 			}
 		} catch (IOException e) {
 			throw new MojoExecutionException(
@@ -638,6 +688,12 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			// TODO change the source/target Java version based on the source update site
 			Files.copy(is, pomXml, StandardCopyOption.REPLACE_EXISTING);
 		}
+
+		// Add our upstream dependency target
+		Path depsTarget = projectBase.resolve("deps.target"); //$NON-NLS-1$
+		try(InputStream is = getClass().getResourceAsStream("/deps.target")) { //$NON-NLS-1$
+			Files.copy(is, depsTarget, StandardCopyOption.REPLACE_EXISTING);
+		}
 	}
 
 	private URLClassLoader buildWorkspaceClassLoader() throws MojoExecutionException {
@@ -858,6 +914,8 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				return true;
 			}
 		} else if(symbolicName.startsWith("com.hcl")) { //$NON-NLS-1$
+			return true;
+		} else if("org.osgi.service.webapplication".equals(symbolicName)) { //$NON-NLS-1$
 			return true;
 		} else {
 			return false;

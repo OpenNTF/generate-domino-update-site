@@ -1,0 +1,47 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hcl.xsp.stub</groupId>
+        <artifactId>xpages-platform-sourcestub</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>example.plugin</artifactId>
+    <packaging>eclipse-plugin</packaging>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <configuration>
+                    <pomDependencies>consider</pomDependencies>
+                    <executionEnvironment>JavaSE-17</executionEnvironment>
+                    <dependency-resolution>
+                        <extraRequirements>
+                            <requirement>
+                                <type>eclipse-plugin</type>
+                                <id>org.openntf.domino.java.api.corba.patch</id>
+                                <versionRange>0.0.0</versionRange>
+                            </requirement>
+                            <requirement>
+                                <type>eclipse-plugin</type>
+                                <id>com.ibm.notes.java.api.win32.linux</id>
+                                <versionRange>0.0.0</versionRange>
+                            </requirement>
+                            <requirement>
+                                <type>eclipse-plugin</type>
+                                <id>com.ibm.domino.napi.impl</id>
+                                <versionRange>0.0.0</versionRange>
+                            </requirement>
+                        </extraRequirements>
+                    </dependency-resolution>
+                    <target>
+                        <file>${project.basedir}/../../deps.target</file>
+                    </target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

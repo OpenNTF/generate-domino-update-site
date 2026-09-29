@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.maven.plugin.logging.Log;
-import org.openntf.p2.domino.updatesite.GenerateSourceStubProjectsMojo;
 
 public enum ClassWriterUtil {
 	;
