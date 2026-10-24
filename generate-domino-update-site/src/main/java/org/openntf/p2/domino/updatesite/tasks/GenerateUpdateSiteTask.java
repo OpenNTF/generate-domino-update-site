@@ -364,6 +364,7 @@ public class GenerateUpdateSiteTask implements Runnable {
 				try(OutputStream os = Files.newOutputStream(manifestPath, StandardOpenOption.TRUNCATE_EXISTING)) {
 					napiManifest.write(os);
 				}
+				napiManifest.getMainAttributes().remove("Bundle-ClassPath");
 			}
 
 			String napiVersion = napiBundle.getFileName().toString().substring("com.ibm.domino.napi_".length()); //$NON-NLS-1$
