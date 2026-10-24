@@ -220,6 +220,9 @@ public enum ClassWriterUtil {
 			if(skip != null && skip.contains(f.getName())) {
 				continue;
 			}
+			if("serialVersionUID".equals(f.getName())) { //$NON-NLS-1$
+				continue;
+			}
 			
 			int fmod = f.getModifiers();
 			if (!f.isEnumConstant() && !Modifier.isPrivate(fmod)) {

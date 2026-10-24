@@ -315,16 +315,19 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 			
 			// If the bundle needs a special pom.xml, write that now
 			if(needsFragments[0]) {
-				Document pomXmlDoc;
-				try(InputStream is = getClass().getResourceAsStream("/fragmentDepPom.xml")) { //$NON-NLS-1$
-					pomXmlDoc = NSFODPDomUtil.createDocument(is);
-				}
-				Element artifactId = (Element)NSFODPDomUtil.node(pomXmlDoc, "/*[name()='project']/*[name()='artifactId']").orElse(null); //$NON-NLS-1$
-				artifactId.setTextContent(symbolicName);
-				
-				Path pomXml = bundleBase.resolve("pom.xml"); //$NON-NLS-1$
-				try(BufferedWriter w = Files.newBufferedWriter(pomXml, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
-					NSFODPDomUtil.serialize(w, pomXmlDoc, null);
+				// Veto that logic for the bundles themselves
+				if(!(symbolicName.startsWith("com.ibm.domino.napi") || symbolicName.startsWith("com.ibm.notes.java.api"))) {
+					Document pomXmlDoc;
+					try(InputStream is = getClass().getResourceAsStream("/fragmentDepPom.xml")) { //$NON-NLS-1$
+						pomXmlDoc = NSFODPDomUtil.createDocument(is);
+					}
+					Element artifactId = (Element)NSFODPDomUtil.node(pomXmlDoc, "/*[name()='project']/*[name()='artifactId']").orElse(null); //$NON-NLS-1$
+					artifactId.setTextContent(symbolicName);
+					
+					Path pomXml = bundleBase.resolve("pom.xml"); //$NON-NLS-1$
+					try(BufferedWriter w = Files.newBufferedWriter(pomXml, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
+						NSFODPDomUtil.serialize(w, pomXmlDoc, null);
+					}
 				}
 			}
 		} catch (IOException e) {
@@ -530,6 +533,9 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 				Path outputPath = src.resolve(packageName.replace(".", src.getFileSystem().getSeparator())) //$NON-NLS-1$
 						.resolve(className + ".java"); //$NON-NLS-1$
 				Files.createDirectories(outputPath.getParent());
+				
+				// call getDeclaredFields to get any VerifyError out of the way
+				clazz.getDeclaredFields();
 
 				try (BufferedWriter w = Files.newBufferedWriter(outputPath, StandardCharsets.UTF_8,
 						StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
@@ -544,7 +550,7 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		} catch (NoClassDefFoundError e) {
 			// Shows up for some client-only classes in Domino update sites
 			getLog().warn(MessageFormat.format("Unable to write class {0}: {1}", className, e.toString()));
-		} catch(IncompatibleClassChangeError e) {
+		} catch(IncompatibleClassChangeError | VerifyError e) {
 			// Shows up for some ICU classes with broken lineages
 			getLog().warn(MessageFormat.format("Unable to write class {0}: {1}", className, e.toString()));
 		} catch (IOException e) {
@@ -621,15 +627,27 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 					// While here, collect any deeper inner classes
 					SortedSet<Class<?>> deeperClasses = pool.stream().skip(1)
 							.filter(c -> c.getName().startsWith(innerClass.getName()))
+							.filter(c -> {
+								// Try getDeclaredFields to get any VerifyErrors out of the way
+								try {
+									c.getDeclaredFields();
+								} catch(VerifyError e) {
+									getLog().warn(MessageFormat.format("Unable to write class {0}: {1}", className, e.toString()));
+									return false;
+								}
+								return true;
+							})
 							.collect(
 									Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(Class::getName))));
 
-					String innerClassName = innerClass.getName().substring(dollarIndex + 1);
-					if (Character.isDigit(innerClassName.charAt(0))) {
-						int dotIndex = innerClass.getName().lastIndexOf('.');
-						innerClassName = innerClass.getName().substring(dotIndex + 1);
+					if(!deeperClasses.isEmpty()) {
+						String innerClassName = innerClass.getName().substring(dollarIndex + 1);
+						if (Character.isDigit(innerClassName.charAt(0))) {
+							int dotIndex = innerClass.getName().lastIndexOf('.');
+							innerClassName = innerClass.getName().substring(dotIndex + 1);
+						}
+						writeClass(pw, deeperClasses, innerClassName);
 					}
-					writeClass(pw, deeperClasses, innerClassName);
 				}
 			}
 		}
@@ -754,6 +772,25 @@ public class GenerateSourceStubProjectsMojo extends AbstractMavenizeBundlesMojo 
 		if (className.endsWith(".module-info")) { //$NON-NLS-1$
 			return false;
 		}
+		
+		// Ignore com.sun.* classes, which are generally re-packaged XML classes
+		if(className.startsWith("com.sun.")) { //$NON-NLS-1$
+			return false;
+		}
+		
+		// Ignore numbered anonymous classes
+		int dollarIndex = className.indexOf('$');
+		if(dollarIndex > -1) {
+			try {
+				Integer.parseInt(className.substring(dollarIndex+1));
+				
+				// Must be a numeric name - don't emit
+				return false;
+			} catch(NumberFormatException e) {
+				// Not a numeric name
+			}
+		}
+		
 		return true;
 	}
 

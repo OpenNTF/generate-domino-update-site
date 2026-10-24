@@ -205,6 +205,7 @@ public enum ClassWriterConfig {
 		
 		SKIP_CLASSES = new HashSet<>();
 		SKIP_CLASSES.add("lotus.domino.AgentLoader"); //$NON-NLS-1$
+		SKIP_CLASSES.add("COM.ibm.JEmpower.applet.AppletImageRef"); //$NON-NLS-1$
 		
 		RAW_CLASS_BODY_ADDITIONS = new HashMap<>();
 		RAW_CLASS_BODY_ADDITIONS.put("org.apache.jasper.runtime.JspContextWrapper", "public javax.el.ELContext getELContext() { return null; }"); //$NON-NLS-1$ //$NON-NLS-2$
